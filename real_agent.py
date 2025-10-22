@@ -65,7 +65,14 @@ def main():
         # print(response["structured_response"].bunny_response)
         # print(response["structured_response"].weather_condition)
 
-        print(f"Output: {str(response['messages'][-1].content)}")
+        # print(f"Output: {str(response['messages'][-1].content)}")
+        # print(f"Output {str(response)}")
+        # print("")
+
+        messages = response["messages"]
+        for item in messages:
+            print(f'[{item.type}]: {item.content}')
+        print("")
 
 if __name__ == "__main__":
     main()
