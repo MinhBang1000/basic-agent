@@ -6,12 +6,12 @@ load_dotenv()
 
 def get_weather(city: str) -> str:
     """Return the weather of a given city"""
-    return "The weather in the f{city} city is Sunny"
+    return f"The weather in the {city} city is Sunny"
 
 def main():
 
     llm = init_chat_model(
-        model="google_genai:gemini-2.5-pro",
+        model="google_genai:gemini-2.0-flash",
         temperature=0.3
     )
 
