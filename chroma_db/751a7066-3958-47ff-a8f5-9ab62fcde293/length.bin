@@ -1,0 +1,6 @@
+## 5. Future Research Directions
+
+- Combining vector-based retrieval (FAISS or Chroma) with anomaly detection to flag unusual prompts.  
+- Building datasets that include multilingual and multi-turn injection examples.  
+- Mapping attacks and defenses to MITRE ATLAS and OWASP LLM01 categories.  
+- Studying correlated attacks such as **EchoLeak (CVE-2025-32711)** that target multi-agent memory shari
