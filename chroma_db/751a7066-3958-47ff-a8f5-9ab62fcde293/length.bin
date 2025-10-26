@@ -1,6 +1,3 @@
-## 5. Future Research Directions
+# AI Agent Security and Input Injection Defense
 
-- Combining vector-based retrieval (FAISS or Chroma) with anomaly detection to flag unusual prompts.  
-- Building datasets that include multilingual and multi-turn injection examples.  
-- Mapping attacks and defenses to MITRE ATLAS and OWASP LLM01 categories.  
-- Studying correlated attacks such as **EchoLeak (CVE-2025-32711)** that target multi-agent memory shari
+Large language model (LLM)–based agents are vulnerable to a variety of prompt and input injection attacks. These attacks attempt to manipulate the model’s behavior by inserting malicious text inside user inputs, retrieved documents, or even system messages. The goal is often to override safety rules, exfiltrate secrets, or cause unintended tool 
