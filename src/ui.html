@@ -25,7 +25,6 @@
             --radius-full: 999px;
         }
 
-        /* global reset-ish */
         * {
             box-sizing: border-box;
             -webkit-font-smoothing: antialiased;
@@ -136,7 +135,7 @@
             scroll-behavior: smooth;
         }
 
-        /* nicer scrollbar for dark theme */
+        /* custom scrollbar for dark UI */
         .chat-body::-webkit-scrollbar,
         .side-body::-webkit-scrollbar {
             width: 6px;
@@ -185,7 +184,6 @@
             text-align: left;
         }
 
-        /* shared bubble base */
         .bubble {
             padding: 0.75rem 1rem;
             font-size: 0.85rem;
@@ -196,10 +194,8 @@
             word-break: break-word;
             overflow-wrap: break-word;
 
-            /* round look by default */
             border-radius: 25px;
 
-            /* sizing / overflow behavior */
             display: inline-block;
             max-width: 90%;
             width: fit-content;
@@ -207,7 +203,7 @@
             position: relative;
         }
 
-        /* USER bubble (right side) */
+        /* USER bubble (right) */
         .user .bubble {
             background: var(--user-bubble);
             color: #0f172a;
@@ -215,15 +211,9 @@
             box-shadow:
                 0 20px 40px rgba(56,189,248,0.4),
                 0 2px 8px rgba(0,0,0,0.4);
-
-            /* slightly less round on the bottom-right to imply direction */
-            /*border-top-left-radius: var(--radius-full);*/
-            /*border-top-right-radius: var(--radius-full);*/
-            /*border-bottom-left-radius: var(--radius-full);*/
-            /*border-bottom-right-radius: var(--radius-lg);*/
         }
 
-        /* AGENT bubble (left side) */
+        /* AGENT bubble (left) */
         .agent .bubble {
             background: var(--agent-bubble);
             color: var(--text-primary);
@@ -232,15 +222,13 @@
                 0 20px 40px rgba(0,0,0,0.17),
                 0 2px 8px rgba(0,0,0,0.6),
                 0 0 80px rgba(56,189,248,0.1);
-
-            /* slightly less round on the bottom-left to imply direction */
-            /*border-top-left-radius: var(--radius-full);*/
-            /*border-top-right-radius: var(--radius-full);*/
-            /*border-bottom-right-radius: var(--radius-full);*/
-            /*border-bottom-left-radius: var(--radius-lg);*/
         }
 
-        /* Optional: basic markdown-ish formatting for bold and lists */
+        /* Markdown-like formatting inside bubbles */
+        .bubble p {
+            margin: 0.4rem 0;
+        }
+
         .bubble strong,
         .bubble b {
             font-weight: 600;
@@ -256,6 +244,7 @@
         .bubble li {
             margin: 0.25rem 0;
             list-style: disc;
+            color: var(--text-primary);
         }
 
         .sender-label {
@@ -289,7 +278,7 @@
             font-family: "JetBrains Mono", Consolas, monospace;
         }
 
-        /* ===== Chat Footer (input + send button) ============================ */
+        /* ===== Chat Footer ================================================== */
 
         .chat-footer {
             border-top: 1px solid var(--border-color);
@@ -363,7 +352,7 @@
                 0 1px 4px rgba(0,0,0,0.6);
         }
 
-        /* ===== Side Panel (Trace) ========================================== */
+        /* ===== Side Panel =================================================== */
 
         .side-card {
             background: var(--card-bg);
@@ -451,8 +440,6 @@
             margin-top: 0.75rem;
         }
     </style>
-
-
 </head>
 <body>
 <div class="app-shell">
@@ -516,6 +503,55 @@
 </div>
 
 <script>
+    // --- minimal markdown renderer for agent messages ---
+    function renderMarkdownLite(mdText) {
+        // 1. escape HTML so the model can't inject raw <script> etc
+        let safe = mdText
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+
+        // 2. bold: **text** -> <strong>text</strong>
+        safe = safe.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+        // 3. split lines and convert bullets / paragraphs
+        const lines = safe.split(/\r?\n/);
+        let htmlParts = [];
+        let inList = false;
+
+        for (let line of lines) {
+            const bulletMatch = line.match(/^\s*[\*\-]\s+(.*)$/);
+
+            if (bulletMatch) {
+                // bullet item
+                if (!inList) {
+                    inList = true;
+                    htmlParts.push("<ul>");
+                }
+                htmlParts.push("<li>" + bulletMatch[1] + "</li>");
+            } else {
+                // normal text line
+                if (inList) {
+                    inList = false;
+                    htmlParts.push("</ul>");
+                }
+
+                if (line.trim() === "") {
+                    // blank line -> visual break
+                    htmlParts.push("<br/>");
+                } else {
+                    htmlParts.push("<p>" + line + "</p>");
+                }
+            }
+        }
+
+        if (inList) {
+            htmlParts.push("</ul>");
+        }
+
+        return htmlParts.join("");
+    }
+
     const chatBody = document.getElementById("chatBody");
     const userInput = document.getElementById("userInput");
     const sendBtn = document.getElementById("sendBtn");
@@ -534,12 +570,19 @@
 
         const bubble = document.createElement("div");
         bubble.className = "bubble";
-        bubble.textContent = text;
+
+        if (sender === "agent") {
+            // render agent text as simple markdown
+            bubble.innerHTML = renderMarkdownLite(text);
+        } else {
+            // render user text literally, do not interpret as HTML
+            bubble.textContent = text;
+        }
 
         row.appendChild(label);
         row.appendChild(bubble);
 
-        // If it's agent and we have a trace for THIS answer, add chip inside the row (local context)
+        // add trace chip for agent only
         if (sender === "agent" && traceArr && traceArr.length > 0) {
             const chip = document.createElement("div");
             chip.className = "trace-chip";
@@ -559,17 +602,17 @@
         const text = userInput.value.trim();
         if (!text) return;
 
-        // Show user bubble immediately
+        // show user bubble immediately
         addMessageBubble("user", text);
 
-        // Disable UI while sending
+        // disable UI while sending
         userInput.value = "";
         userInput.disabled = true;
         sendBtn.disabled = true;
         sendBtn.textContent = "…";
 
         try {
-            // Call FastAPI
+            // call FastAPI
             const res = await fetch("http://127.0.0.1:8000/chat", {
                 method: "POST",
                 headers: {
@@ -585,23 +628,23 @@
                 traceStepsEl.textContent = "(error)";
             } else {
                 const data = await res.json();
-                // data.answer (string), data.trace (array)
+                // agent reply bubble
                 addMessageBubble("agent", data.answer || "(no answer)", data.trace || []);
-                // update side panel trace
+
+                // update right-side trace panel
                 if (data.trace && data.trace.length > 0) {
                     traceStepsEl.textContent = data.trace.join(" → ");
                 } else {
                     traceStepsEl.textContent = "(no steps)";
                 }
             }
-
         } catch (err) {
             console.error(err);
             addMessageBubble("agent", "⚠ Network error. Check if FastAPI is running on :8000.");
             traceStepsEl.textContent = "(network error)";
         }
 
-        // Re-enable UI
+        // re-enable UI
         userInput.disabled = false;
         sendBtn.disabled = false;
         sendBtn.textContent = "Send →";
@@ -611,7 +654,7 @@
     // send on button click
     sendBtn.addEventListener("click", sendMessage);
 
-    // send on Enter key
+    // send on Enter (no Shift)
     userInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
