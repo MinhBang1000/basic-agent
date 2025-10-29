@@ -35,9 +35,9 @@ def get_gmail_service():
     return service
 
 @tool("read_emails", description="Read latest Gmail messages. Optional query: search string.")
-def read_emails(query: str = "") -> str:
+def read_emails(query: str = "", number_of_emails: int = 5) -> str:
     service = get_gmail_service()
-    results = service.users().messages().list(userId="me", q=query, maxResults=5).execute()
+    results = service.users().messages().list(userId="me", q=query, maxResults=number_of_emails).execute()
     messages = results.get("messages", [])
 
     emails = []
@@ -55,8 +55,11 @@ def read_emails(query: str = "") -> str:
     return "\n---\n".join(emails)
 
 @tool("summarize_emails", description="Summarize the latest Gmail messages.")
-def summarize_emails() -> str:
-    content = read_emails.invoke({})
+def summarize_emails(number_of_emails: int = 5) -> str:
+    content = read_emails.invoke({
+        "query": "",
+        "number_of_emails": number_of_emails,
+    })
     lines = content.splitlines()
     summary = []
     for line in lines:
@@ -64,6 +67,22 @@ def summarize_emails() -> str:
             summary.append(line)
     return "\n".join(summary)
 
+@tool("send_email", description="Send an email via Gmail. Args: to, subject, body")
+def send_email(to: str, subject: str, body: str) -> str:
+    service = get_gmail_service()
+    from email.mime.text import MIMEText
+    import base64
 
-TOOLS = [get_weather, add, read_emails, summarize_emails]
+    message = MIMEText(body)
+    message["to"] = to
+    message["subject"] = subject
+
+    encoded = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    create_message = {"raw": encoded}
+
+    service.users().messages().send(userId="me", body=create_message).execute()
+    return f"Email sent to {to} with subject '{subject}'."
+
+
+TOOLS = [get_weather, add, read_emails, summarize_emails, send_email]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
