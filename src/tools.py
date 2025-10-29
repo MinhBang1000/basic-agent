@@ -1,5 +1,11 @@
 from langchain_core.tools import tool
 
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import os, pickle
+import base64, email
+
 @tool("get_weather", description="Get weather in a city")
 def get_weather(city: str):
     return f"It is always sunny in {city}."
@@ -8,5 +14,56 @@ def get_weather(city: str):
 def add(a: int, b: int):
     return a+b
 
-TOOLS = [get_weather, add]
+# Gmail features
+SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+def get_gmail_service():
+    creds = None
+    if os.path.exists("token.pkl"):
+        with open("token.pkl", "rb") as token:
+            creds = pickle.load(token)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open("token.pkl", "wb") as token:
+            pickle.dump(creds, token)
+
+    service = build("gmail", "v1", credentials=creds)
+    return service
+
+@tool("read_emails", description="Read latest Gmail messages. Optional query: search string.")
+def read_emails(query: str = "") -> str:
+    service = get_gmail_service()
+    results = service.users().messages().list(userId="me", q=query, maxResults=5).execute()
+    messages = results.get("messages", [])
+
+    emails = []
+    for m in messages:
+        msg = service.users().messages().get(userId="me", id=m["id"], format="full").execute()
+        snippet = msg.get("snippet", "")
+        payload = msg.get("payload", {})
+        headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
+        subject = headers.get("Subject", "(no subject)")
+        sender = headers.get("From", "(unknown)")
+        emails.append(f"From: {sender}\nSubject: {subject}\nSnippet: {snippet}\n")
+
+    if not emails:
+        return "No emails found."
+    return "\n---\n".join(emails)
+
+@tool("summarize_emails", description="Summarize the latest Gmail messages.")
+def summarize_emails() -> str:
+    content = read_emails.invoke({})
+    lines = content.splitlines()
+    summary = []
+    for line in lines:
+        if line.startswith("Subject:") or line.startswith("From:"):
+            summary.append(line)
+    return "\n".join(summary)
+
+
+TOOLS = [get_weather, add, read_emails, summarize_emails]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}

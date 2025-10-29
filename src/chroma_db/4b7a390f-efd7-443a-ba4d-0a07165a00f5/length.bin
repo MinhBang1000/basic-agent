@@ -1,5 +1,6 @@
-## 4. Integration with LangGraph Agents
+## 5. Future Research Directions
 
-In a LangGraph-based system, the three-layer filter can be inserted as a preprocessing node before the model node. Each input message is first scanned by the rule filter, then vectorized for similarity search, and finally checked by a semantic LLM filter. The filtered message is passed downstream only if all layers approve it.
-
-## 5. Future Research Directi
+- Combining vector-based retrieval (FAISS or Chroma) with anomaly detection to flag unusual prompts.  
+- Building datasets that include multilingual and multi-turn injection examples.  
+- Mapping attacks and defenses to MITRE ATLAS and OWASP LLM01 categories.  
+- Studying correlated attacks such as **EchoLeak (CVE-2025-32711)** that target multi-agent memory shari
