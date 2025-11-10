@@ -5,6 +5,7 @@ from config import SYSTEM_PROMPT, LLM
 from tools import TOOLS, TOOLS_BY_NAME
 from rag import setup_rag
 from graph_nodes import retrieve_context, call_model, call_tool, should_call_tools, final_model
+from utils import extract_event
 
 def build_app():
     # rag define
@@ -47,7 +48,7 @@ if __name__ == "__main__":
             config={"configurable": {"thread_id": thread_id}},
         )
         for ev in events:
-            node_name, payload = next(iter(ev.items()))
+            node_name, payload = extract_event(ev)
             if node_name in ["model", "final"]:
                 msg = payload["messages"][-1]
                 print(f"[{node_name.upper()}] -> {msg.content}")

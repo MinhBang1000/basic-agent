@@ -4,6 +4,8 @@ from main import build_app
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage, AIMessage
 
+from utils import extract_event
+
 agent_app = build_app()
 THREAD_ID = "agent_1"
 
@@ -38,7 +40,7 @@ def chat(request: ChatRequest):
     final_answer = ""
 
     for event in events:
-        node_name, payload = next(iter(event.items()))
+        node_name, payload = extract_event(event)
         trace_steps.append(node_name)
         last_message = payload["messages"][-1]
         if isinstance(last_message, AIMessage):

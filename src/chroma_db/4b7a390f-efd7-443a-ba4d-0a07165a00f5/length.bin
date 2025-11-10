@@ -1,1 +1,6 @@
-d Filtering**  \n   Classifies inputs as benign or malicious based on vector similarity or anomaly detection.  \n   The filter is trained on a dataset of known prompt-injection examples and normal queries.\n\n3. **LLM-Based Semantic Filtering**  \n   A large model evaluates the input’s *intent* and *context*, not just its surface text.  \n   It detects paraphrased or disguised instructions that 
+## 5. Future Research Directions
+
+- Combining vector-based retrieval (FAISS or Chroma) with anomaly detection to flag unusual prompts.  
+- Building datasets that include multilingual and multi-turn injection examples.  
+- Mapping attacks and defenses to MITRE ATLAS and OWASP LLM01 categories.  
+- Studying correlated attacks such as **EchoLeak (CVE-2025-32711)** that target multi-agent memory shari
