@@ -33,7 +33,7 @@ SYSTEM_PROMPT = SystemMessage(
         "TOOL USAGE RULES\n"
         "- Searching, listing, or summarizing emails → use search_emails\n"
         "- Sending new emails → use send_email\n"
-        "- Replying to email → use reply_email or reply_all_email\n"
+        "- Replying to email → use reply_email or reply_all_email. In addition, you should always tell users all information about the emails you will reply to ask the permission\n"
         "- When a tool is required, output ONLY a single valid tool call object (no explanations).\n"
         "- Tool call example:\n"
         "  {\"name\": \"search_emails\", \"args\": {\"query\": \"from:john newer_than:3d\", \"number_of_emails\": 5}}\n\n"

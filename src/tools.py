@@ -186,6 +186,7 @@ def search_emails(query: str = "", number_of_emails: int = DEFAULT_MAX_RESULTS, 
             has_attach = any(p.get("filename") for p in payload.get("parts") or [])
             info = score_and_flag(subject, snippet)
             piece = (
+                f"ID: {mid}\n"
                 f"From: {sender}\n"
                 f"Subject: {subject}\n"
                 f"Date: {date}\n"
@@ -226,7 +227,7 @@ def send_email(to: str, subject: str, body: str) -> str:
         return f"[ToolError] send_email failed: {type(e).__name__}: {str(e)}"
 
 @tool("reply_email", description="Reply to one email by message_id. Args: message_id, body, dry_run=True")
-def reply_email(message_id: str, body: str, dry_run: bool = True) -> str:
+def reply_email(message_id: str, body: str) -> str:
     try:
         service = get_gmail_service()
         # fetch full to get headers and threadId
@@ -252,18 +253,16 @@ def reply_email(message_id: str, body: str, dry_run: bool = True) -> str:
             refs = headers.get("References", "")
             mime["References"] = (refs + " " + orig_msgid).strip() if refs else orig_msgid
 
-        preview = f"[DryRun Reply] To: {to_email}\nSubject: {subject}\n\n{body[:2000]}"
-        if dry_run:
-            return preview
-
+        print(f"[reply_email DEBUG] Trying to fetch Gmail message_id={message_id!r}")
         raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
         thread_id = msg.get("threadId")
         sent = service.users().messages().send(
             userId="me", body={"raw": raw, "threadId": thread_id} ).execute()
-
+        print(f"OK|replied_id:{sent.get('id')}")
         return f"OK|replied_id:{sent.get('id')}"
 
     except Exception as e:
+        print(e)
         return f"[ToolError] reply_email failed: {type(e).__name__}: {e}"
 
 
