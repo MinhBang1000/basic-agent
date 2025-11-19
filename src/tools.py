@@ -226,6 +226,57 @@ def send_email(to: str, subject: str, body: str) -> str:
     except Exception as e:
         return f"[ToolError] send_email failed: {type(e).__name__}: {str(e)}"
 
+import json
+@tool(
+    "is_reply_or_reply_all",
+    description=(
+        "Given a Gmail message_id, determine whether the correct reply action is "
+        "'reply' or 'reply_all'. Returns a JSON object: "
+        "{ 'should_reply_all': bool, 'from': [...], 'to': [...], 'cc': [...], 'all_recipients': [...] }."
+    )
+)
+def is_reply_or_reply_all(message_id: str) -> str:
+    """
+    Determine whether a message should use reply or reply-all behavior.
+    Also returns extracted recipients for LLM to display and confirm with the user.
+    """
+    try:
+        service = get_gmail_service()
+
+        # Fetch the email
+        msg = (
+            service.users()
+            .messages()
+            .get(userId="me", id=message_id, format="full")
+            .execute()
+        )
+        headers = _safe_extract_headers_from_msg(msg)
+
+        raw_from = headers.get("Reply-To") or headers.get("From") or ""
+        raw_to = headers.get("To", "")
+        raw_cc = headers.get("Cc", "")
+
+        from_list = [e for _, e in getaddresses([raw_from])]
+        to_list = [e for _, e in getaddresses([raw_to])]
+        cc_list = [e for _, e in getaddresses([raw_cc])]
+
+        # Rule: If CC exists → should reply all
+        should_reply_all = len(cc_list) > 0 or len(to_list) > 1
+
+        result = {
+            "should_reply_all": should_reply_all,
+            "from": from_list,
+            "to": to_list,
+            "cc": cc_list,
+            "all_recipients": list({*from_list, *to_list, *cc_list}),
+            "subject": headers.get("Subject", "(no subject)")
+        }
+
+        return json.dumps(result, ensure_ascii=False)
+
+    except Exception as e:
+        return f"[ToolError] is_reply_or_reply_all failed: {type(e).__name__}: {e}"
+
 @tool("reply_email", description="Reply to one email by message_id. Args: message_id, body, dry_run=True")
 def reply_email(message_id: str, body: str) -> str:
     try:
@@ -253,7 +304,6 @@ def reply_email(message_id: str, body: str) -> str:
             refs = headers.get("References", "")
             mime["References"] = (refs + " " + orig_msgid).strip() if refs else orig_msgid
 
-        print(f"[reply_email DEBUG] Trying to fetch Gmail message_id={message_id!r}")
         raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
         thread_id = msg.get("threadId")
         sent = service.users().messages().send(
@@ -265,64 +315,154 @@ def reply_email(message_id: str, body: str) -> str:
         print(e)
         return f"[ToolError] reply_email failed: {type(e).__name__}: {e}"
 
+@tool(
+    "reply_all_email",
+    description="Reply to all recipients of an email. Args: message_id, body, my_email"
+)
+def reply_all_email(message_id: str, body: str, my_email: str = "") -> str:
+    """
+    Reply-all to an existing Gmail message while preserving threading and recipients.
 
-from email.utils import getaddresses
+    Args:
+        message_id: Gmail 'id' of the message to reply to (NOT the Message-ID header).
+        body:       Plain-text body of the reply.
+        my_email:   Your own email address (to avoid replying to yourself).
+                    If omitted, we try to guess it from the original To header.
 
-@tool("reply_all_email", description="Reply to all recipients of an email. Args: message_id, body, my_email, dry_run=True")
-def reply_all_email(message_id: str, body: str, my_email: str = "", dry_run: bool = True) -> str:
+    Returns:
+        - "OK|replied_all_id:<id>" on success
+        - "[ToolError] <reason>" on failure
+    """
     try:
         service = get_gmail_service()
-        msg = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+
+        # 1) Fetch original message (headers + threadId)
+        msg = (
+            service.users()
+            .messages()
+            .get(userId="me", id=message_id, format="full")
+            .execute()
+        )
         headers = _safe_extract_headers_from_msg(msg)
 
-        # gather addresses robustly
+        # 2) Raw header strings
         raw_from = headers.get("Reply-To") or headers.get("From") or ""
         raw_to = headers.get("To", "")
         raw_cc = headers.get("Cc", "")
 
-        all_pairs = getaddresses([raw_from, raw_to, raw_cc])  # returns list of (name, email)
-        all_emails = [email_addr for (_, email_addr) in all_pairs if email_addr]
+        # 3) Parse into (name, email) pairs
+        from_addrs = [e for _, e in getaddresses([raw_from])]
+        to_addrs   = [e for _, e in getaddresses([raw_to])]
+        cc_addrs   = [e for _, e in getaddresses([raw_cc])]
 
-        # remove our own email (if provided) and dedupe preserve order
-        seen = set()
-        recipients = []
+        # 4) If my_email not provided, guess from the To list (heuristic)
+        if not my_email and to_addrs:
+            my_email = to_addrs[0]
         my_email_l = (my_email or "").lower()
-        for e in all_emails:
-            el = e.lower()
-            if my_email_l and my_email_l == el:
-                continue
-            if el in seen:
-                continue
-            seen.add(el)
-            recipients.append(e)
 
-        if not recipients:
-            return "[ToolError] No recipients to reply-all to after filtering."
+        def _sanitize_email(addr: str) -> str:
+            """
+            Basic cleanup: strip spaces and remove CR/LF to avoid header injection
+            or invalid formatting that Gmail might reject.
+            """
+            if not addr:
+                return ""
+            addr = addr.strip()
+            addr = addr.replace("\r", "").replace("\n", "")
+            return addr
 
-        to_field = ", ".join(recipients)
+        def _is_probably_valid_email(addr: str) -> bool:
+            """
+            Very simple validation: contains exactly one '@' and some dot after it.
+            This is not full RFC validation, but good enough to avoid obvious errors.
+            """
+            if "@" not in addr:
+                return False
+            local, _, domain = addr.partition("@")
+            if not local or not domain:
+                return False
+            if "." not in domain:
+                return False
+            return True
 
-        subject = headers.get("Subject", "")
+        def _clean_recipients(addresses):
+            """
+            - Sanitize addresses (strip, remove newlines).
+            - Drop obviously invalid ones.
+            - Remove our own email.
+            - Remove duplicates while preserving order.
+            """
+            seen = set()
+            result = []
+            for addr in addresses:
+                addr = _sanitize_email(addr)
+                if not addr:
+                    continue
+                addr_l = addr.lower()
+                # Skip ourselves
+                if my_email_l and addr_l == my_email_l:
+                    continue
+                # Simple validity check
+                if not _is_probably_valid_email(addr):
+                    continue
+                if addr_l in seen:
+                    continue
+                seen.add(addr_l)
+                result.append(addr)
+            return result
+
+        # 5) Clean each group
+        clean_from = _clean_recipients(from_addrs)
+        clean_to   = _clean_recipients(to_addrs)
+        clean_cc   = _clean_recipients(cc_addrs)
+
+        # 6) Build final To and Cc (Gmail-like reply-all behavior)
+        #    To: original sender + original To
+        #    Cc: original Cc
+        to_recipients = _clean_recipients(clean_from + clean_to)
+        cc_recipients = clean_cc
+
+        if not to_recipients and not cc_recipients:
+            return "[ToolError] No valid recipients for reply-all after filtering."
+
+        # If somehow To is empty but Cc has addresses, promote one Cc into To
+        if not to_recipients and cc_recipients:
+            to_recipients = [cc_recipients[0]]
+            cc_recipients = cc_recipients[1:]
+
+        # 7) Subject: ensure "Re:" prefix
+        subject = headers.get("Subject", "") or ""
         if not subject.lower().startswith("re:"):
             subject = "Re: " + subject
 
+        # 8) Build MIME message
         mime = MIMEText(body, "plain", "utf-8")
-        mime["To"] = to_field
         mime["Subject"] = subject
+        if to_recipients:
+            mime["To"] = ", ".join(to_recipients)
+        if cc_recipients:
+            mime["Cc"] = ", ".join(cc_recipients)
 
+        # 9) Threading headers for proper conversation grouping
         orig_msgid = _get_message_id_header(headers)
         if orig_msgid:
             mime["In-Reply-To"] = orig_msgid
             refs = headers.get("References", "")
             mime["References"] = (refs + " " + orig_msgid).strip() if refs else orig_msgid
 
-        preview = f"[DryRun ReplyAll] To: {to_field}\nSubject: {subject}\n\n{body[:2000]}"
-        if dry_run:
-            return preview
-
-        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
+        # 10) Encode + send in same Gmail thread
+        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode("utf-8")
         thread_id = msg.get("threadId")
-        sent = service.users().messages().send(
-            userId="me", body={"raw": raw, "threadId": thread_id}).execute()
+
+        sent = (
+            service.users()
+            .messages()
+            .send(
+                userId="me",
+                body={"raw": raw, "threadId": thread_id},
+            )
+            .execute()
+        )
 
         return f"OK|replied_all_id:{sent.get('id')}"
 
@@ -331,5 +471,5 @@ def reply_all_email(message_id: str, body: str, my_email: str = "", dry_run: boo
 
 
 
-TOOLS = [search_emails, send_email, reply_email, reply_all_email]
+TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
