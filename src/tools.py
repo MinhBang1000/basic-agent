@@ -469,7 +469,101 @@ def reply_all_email(message_id: str, body: str, my_email: str = "") -> str:
     except Exception as e:
         return f"[ToolError] reply_all_email failed: {type(e).__name__}: {e}"
 
+@tool(
+    "get_all_emails",
+    description="Load all saved emails from docs/emails.txt and return them as a JSON list."
+)
+def get_all_emails() -> str:
+    path = "docs/emails.txt"
+    try:
+        if not os.path.exists(path):
+            return json.dumps({"emails": []}, ensure_ascii=False)
+
+        with open(path, "r", encoding="utf-8") as f:
+            lines = [line.strip() for line in f.readlines()]
+
+        # Clean and dedupe
+        emails = []
+        seen = set()
+        for e in lines:
+            if not e:
+                continue
+            if e not in seen:
+                seen.add(e)
+                emails.append(e)
+
+        return json.dumps({"emails": emails}, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps(
+            {"error": True, "type": type(e).__name__, "message": str(e)},
+            ensure_ascii=False
+        )
+
+@tool(
+    "update_emails",
+    description=(
+        "Modify docs/emails.txt. Args:\n"
+        "- action: 'add' or 'remove'\n"
+        "- email: the email address to add/remove.\n"
+        "Maintains one email per line, deduplicated."
+    )
+)
+def update_emails(action: str, email: str) -> str:
+    path = "docs/emails.txt"
+    email = email.strip()
+
+    try:
+        # Load existing emails
+        emails = []
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                emails = [line.strip() for line in f.readlines() if line.strip()]
+
+        # Deduplicate
+        emails = list(dict.fromkeys(emails))
+
+        action = action.lower()
+
+        if action == "add":
+            if email not in emails:
+                emails.append(email)
+                message = f"Added: {email}"
+            else:
+                message = f"Email already exists: {email}"
+
+        elif action == "remove":
+            if email in emails:
+                emails.remove(email)
+                message = f"Removed: {email}"
+            else:
+                message = f"Email not found: {email}"
+
+        else:
+            return json.dumps(
+                {"error": True, "message": "Invalid action (use 'add' or 'remove')."},
+                ensure_ascii=False
+            )
+
+        # Ensure docs/ exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        # Write back to file
+        with open(path, "w", encoding="utf-8") as f:
+            for e in emails:
+                f.write(e + "\n")
+
+        return json.dumps(
+            {"success": True, "message": message, "emails": emails},
+            ensure_ascii=False
+        )
+
+    except Exception as e:
+        return json.dumps(
+            {"error": True, "type": type(e).__name__, "message": str(e)},
+            ensure_ascii=False
+        )
 
 
-TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all]
+TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
