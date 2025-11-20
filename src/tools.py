@@ -5,12 +5,13 @@ from langchain_core.tools import tool
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-import os, pickle
+import os, pickle, json
 from email.mime.text import MIMEText
 from email.utils import getaddresses
 import base64, email
 import re
-
+from docx import Document
+from openpyxl import load_workbook, Workbook
 
 # Constraints
 DEFAULT_MAX_RESULTS = 5
@@ -628,6 +629,159 @@ def forward_email(message_id: str, to: str, body: str = "") -> str:
             ensure_ascii=False
         )
 
+# DOCUMENTS MANIPULATION
 
-TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email]
+def _resolve_filename(path: str) -> str:
+    """
+    Given a full file path, auto-generate a non-conflicting filename.
+    Example:
+        uploads/report.docx      → uploads/report.docx  (if unused)
+        uploads/report.docx      → uploads/report_1.docx
+        uploads/report.docx      → uploads/report_2.docx
+    Returns the final unique file path.
+    """
+
+    # If not exists, return as-is
+    if not os.path.exists(path):
+        return path
+
+    # Split name and extension
+    directory, filename = os.path.split(path)
+    name, ext = os.path.splitext(filename)
+
+    # Try name_1.ext, name_2.ext, ...
+    counter = 1
+    while True:
+        new_filename = f"{name}_{counter}{ext}"
+        new_path = os.path.join(directory, new_filename)
+        if not os.path.exists(new_path):
+            return new_path
+        counter += 1
+
+@tool(
+    "read_docx",
+    description="Read a .docx file from uploads/ and return its full text. Args: file_name"
+)
+def read_docx(file_name: str) -> str:
+
+
+    try:
+        path = os.path.join("uploads", file_name)
+        if not os.path.exists(path):
+            return json.dumps({"error": True, "message": "File not found"}, ensure_ascii=False)
+
+        doc = Document(path)
+        paragraphs = [p.text for p in doc.paragraphs]
+        text = "\n".join(paragraphs)
+
+        return json.dumps({"text": text}, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps(
+            {"error": True, "type": type(e).__name__, "message": str(e)},
+            ensure_ascii=False
+        )
+
+# @tool(
+#     "create_docx",
+#     description=(
+#         "Create a .docx file in uploads/. If filename exists, auto-create file_1.docx. "
+#         "Args: file_name, content"
+#     )
+# )
+# def create_docx(file_name: str, content: str) -> str:
+#
+#
+#     try:
+#         os.makedirs("uploads", exist_ok=True)
+#
+#         base_path = os.path.join("uploads", file_name)
+#         final_path = _resolve_filename(base_path)
+#
+#         doc = Document()
+#         for line in content.split("\n"):
+#             doc.add_paragraph(line)
+#
+#         doc.save(final_path)
+#
+#         return json.dumps({"success": True, "file": os.path.basename(final_path)}, ensure_ascii=False)
+#
+#     except Exception as e:
+#         return json.dumps(
+#             {"error": True, "type": type(e).__name__, "message": str(e)},
+#             ensure_ascii=False
+#         )
+
+@tool(
+    "read_xlsx",
+    description="Read a .xlsx from uploads/ and return all sheets as JSON. Args: file_name"
+)
+def read_xlsx(file_name: str) -> str:
+
+
+    try:
+        path = os.path.join("uploads", file_name)
+        if not os.path.exists(path):
+            return json.dumps({"error": True, "message": "File not found"}, ensure_ascii=False)
+
+        wb = load_workbook(path)
+        result = {"sheets": {}}
+
+        for sheet in wb.sheetnames:
+            ws = wb[sheet]
+            rows = []
+            for row in ws.iter_rows(values_only=True):
+                rows.append(list(row))
+            result["sheets"][sheet] = rows
+
+        return json.dumps(result, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps(
+            {"error": True, "type": type(e).__name__, "message": str(e)},
+            ensure_ascii=False
+        )
+
+from typing import List, Union
+
+# @tool(
+#     "create_xlsx",
+#     description=(
+#         "Create a .xlsx file in uploads/. If exists, auto-version the filename. "
+#         "Args: file_name, sheet_name, data (JSON list of lists for rows)."
+#     )
+# )
+# def create_xlsx(
+#     file_name: str,
+#     sheet_name: str,
+#     data: List[List[Union[str, float, int, None]]]
+# ) -> str:
+#     import json, os
+#     from openpyxl import Workbook
+#
+#     try:
+#         os.makedirs("uploads", exist_ok=True)
+#
+#         base_path = os.path.join("uploads", file_name)
+#         final_path = _resolve_filename(base_path)
+#
+#         wb = Workbook()
+#         ws = wb.active
+#         ws.title = sheet_name
+#
+#         for row in data:
+#             ws.append(row)
+#
+#         wb.save(final_path)
+#
+#         return json.dumps({"success": True, "file": os.path.basename(final_path)}, ensure_ascii=False)
+#
+#     except Exception as e:
+#         return json.dumps(
+#             {"error": True, "type": type(e).__name__, "message": str(e)},
+#             ensure_ascii=False
+#         )
+
+
+TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
