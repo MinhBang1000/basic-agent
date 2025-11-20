@@ -564,6 +564,70 @@ def update_emails(action: str, email: str) -> str:
             ensure_ascii=False
         )
 
+@tool(
+    "forward_email",
+    description=(
+        "Forward an existing Gmail message to someone else. "
+        "Args: message_id, to, body. The body is your added text above the forwarded content."
+    )
+)
+def forward_email(message_id: str, to: str, body: str = "") -> str:
+    try:
+        service = get_gmail_service()
 
-TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails]
+        # 1. Fetch original email
+        msg = service.users().messages().get(
+            userId="me", id=message_id, format="full"
+        ).execute()
+
+        payload = msg.get("payload", {})
+        headers = _safe_extract_headers_from_msg(msg)
+
+        orig_from = headers.get("From", "(unknown)")
+        orig_date = headers.get("Date", "(unknown)")
+        orig_subject = headers.get("Subject", "(no subject)")
+
+        # Extract snippet OR best body
+        snippet = msg.get("snippet", "") or _parse_payload_snippet(payload) or ""
+
+        # 2. Build forwarded subject
+        fwd_subject = f"Fwd: {orig_subject}"
+
+        # 3. Construct forwarded message text
+        forwarded_block = (
+            "\n--- Forwarded message ---\n"
+            f"From: {orig_from}\n"
+            f"Date: {orig_date}\n"
+            f"Subject: {orig_subject}\n\n"
+            f"{snippet}\n"
+        )
+
+        full_body = (body + "\n\n" + forwarded_block).strip()
+
+        # 4. Build MIME
+        mime = MIMEText(full_body, "plain", "utf-8")
+        mime["To"] = to
+        mime["Subject"] = fwd_subject
+
+        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
+
+        # 5. Send
+        sent = service.users().messages().send(
+            userId="me",
+            body={"raw": raw}
+        ).execute()
+
+        return json.dumps(
+            {"success": True, "id": sent.get("id")},
+            ensure_ascii=False
+        )
+
+    except Exception as e:
+        return json.dumps(
+            {"error": True, "type": type(e).__name__, "message": str(e)},
+            ensure_ascii=False
+        )
+
+
+TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
