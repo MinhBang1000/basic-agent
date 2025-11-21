@@ -59,6 +59,7 @@ SYSTEM_PROMPT = SystemMessage(
         "- create DOCX (auto-version)     → create_docx\n"
         "- read XLSX                      → read_xlsx\n"
         "- create XLSX (auto-version)     → create_xlsx\n"
+        "- read PDF                       → read_pdf\n"
         "- When needed, output EXACTLY ONE tool-call JSON object.\n"
         "- No extra text before or after the JSON.\n\n"
 
@@ -94,6 +95,7 @@ SYSTEM_PROMPT = SystemMessage(
         "==============================\n"
         "- DOCX: content is plain text.\n"
         "- XLSX: data must be JSON list-of-lists (each list = one row).\n"
+        "- PDF: use read_pdf to extract raw text; summarize AFTER the tool returns text.\n"
         "- Never guess or fabricate file contents.\n"
         "- For creation tools, filenames auto-version: file.docx → file_1.docx → file_2.docx\n"
         "- Ask user if filename or sheet name is missing.\n\n"
@@ -108,6 +110,16 @@ SYSTEM_PROMPT = SystemMessage(
         "     - Sender — Subject — Attachment — [Flags] — short highlight\n"
         "  3) Ask:\n"
         "     \"Do you want me to reply, open an attachment, or draft a response?\"\n\n"
+        
+        "==============================\n"
+        "PDF SUMMARIZATION WORKFLOW\n"
+        "==============================\n"
+        "- If user asks to summarize or analyze a PDF:\n"
+        "    1) Call read_pdf(file_name)\n"
+        "    2) Wait for tool response\n"
+        "    3) Summarize the returned \"text\" clearly and concisely\n"
+        "- Never guess PDF contents.\n"
+        "- Never summarize based on filename alone.\n"
 
         "==============================\n"
         "ERROR HANDLING\n"

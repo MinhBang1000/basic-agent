@@ -13,6 +13,7 @@ import re
 from docx import Document
 from openpyxl import load_workbook, Workbook
 from typing import List, Union
+from pdfminer.high_level import extract_text as pdf_extract_text
 
 # Constraints
 DEFAULT_MAX_RESULTS = 5
@@ -789,6 +790,37 @@ def create_xlsx(file_name: str, sheet_name: str, data: List[List[str]]) -> str:
             ensure_ascii=False
         )
 
+@tool(
+    "read_pdf",
+    description="Read a .pdf file from uploads/ and return its full text for summarization. Args: file_name"
+)
+def read_pdf(file_name: str) -> str:
+    """
+    Read a PDF from uploads/ and return its extracted text as JSON.
+    The LLM can then summarize or analyze this text.
+    """
+    try:
+        path = os.path.join("uploads", file_name)
+        if not os.path.exists(path):
+            return json.dumps(
+                {"error": True, "message": "File not found"},
+                ensure_ascii=False
+            )
 
-TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx, create_xlsx]
+        text = pdf_extract_text(path) or ""
+
+        # Optionally, you can clip if PDFs are huge (to protect context window)
+        # MAX_CHARS = 20000
+        # text = text[:MAX_CHARS]
+
+        return json.dumps({"text": text}, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps(
+            {"error": True, "type": type(e).__name__, "message": str(e)},
+            ensure_ascii=False
+        )
+
+
+TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx, create_xlsx, read_pdf]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
