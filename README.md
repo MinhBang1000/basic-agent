@@ -61,3 +61,47 @@ If you want, I can:
 - Fix the f-string bug in main.py
 - Add usage examples for the other agent scripts
 
+The structure:
+project-name/
+├── app/
+│   ├── __init__.py
+│   ├── main.py            # FastAPI app instance and router inclusion
+│   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   └── endpoints.py     # FastAPI routers (@app.post, @app.get)
+│   │
+│   ├── core/
+│   │   ├── __init__.py
+│   │   └── config.py        # Settings, API keys (loaded from .env)
+│   │
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   └── agent_schemas.py # Pydantic models for request/response
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   └── agent_service.py # Business logic (where FastAPI calls LangGraph)
+│   │
+│   ├── graphs/
+│   │   ├── __init__.py
+│   │   ├── state.py         # LangGraph state definition (TypedDict)
+│   │   ├── nodes.py         # Node functions (call models, tools, etc.)
+│   │   ├── tools/           # Directory for custom tools
+│   │   │   ├── __init__.py
+│   │   │   └── web_search.py
+│   │   └── workflow.py      # Graph assembly (add_nodes, add_edges, compile)
+│   │
+│   └── tools/
+│       ├── __init__.py
+│       └── ...              # (Alternative location for tools)
+│
+├── tests/
+│   ├── __init__.py
+│   ├── test_api.py          # Tests for FastAPI endpoints
+│   └── test_graph.py        # Tests for the LangGraph logic
+│
+├── .env                     # Secrets and environment variables (NEVER commit)
+├── .gitignore               # Files/dirs to ignore (e.g., __pycache__, .env, venv/)
+├── README.md                # Project description and setup instructions
+└── requirements.txt         # Project dependencies (fastapi, uvicorn, langgraph, langchain)

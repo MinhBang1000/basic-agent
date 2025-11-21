@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Console</title>
+    <style>
+        :root {
+            --bg-gradient-start: #0f172a;
+            --bg-gradient-end: #1e293b;
+
+            --card-bg: rgba(30, 41, 59, 0.75);
+            --border-color: rgba(148, 163, 184, 0.2);
+
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #38bdf8;
+
+            --user-bubble: #38bdf8;
+            --agent-bubble: #1e293b;
+
+            --radius-md: 0.75rem;
+            --radius-lg: 1rem;
+            --radius-xl: 1.25rem;
+            --radius-full: 999px;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 20% 20%, #1e40af22 0%, transparent 60%),
+                radial-gradient(circle at 80% 30%, #14b8a622 0%, transparent 60%),
+                linear-gradient(to bottom right, var(--bg-gradient-start), var(--bg-gradient-end));
+            font-family: system-ui, -apple-system, BlinkMacSystemFont,
+                         "Inter", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+            color: var(--text-primary);
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        /* ===== Layout Shell ================================================= */
+
+        .app-shell {
+            width: 100%;
+            max-width: 900px;
+            display: grid;
+            grid-template-columns: 1fr 260px;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 780px) {
+            .app-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .side-card {
+                order: -1;
+                max-height: 200px;
+            }
+
+            .chat-card {
+                max-height: none;
+                height: 70vh;
+            }
+        }
+
+        /* ===== Chat Card ==================================================== */
+
+        .chat-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px) saturate(160%);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-xl);
+            box-shadow:
+                0 30px 120px rgba(0,0,0,0.6),
+                0 4px 16px rgba(0,0,0,0.6),
+                0 0 60px rgba(56,189,248,0.08);
+
+            display: flex;
+            flex-direction: column;
+
+            min-height: 500px;
+            max-height: 80vh;
+        }
+
+        .chat-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .chat-header-left {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chat-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+            line-height: 1.2;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: var(--radius-full);
+            background-color: #4ade80;
+            box-shadow: 0 0 10px #4ade80aa;
+        }
+
+        .chat-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 1.25rem 0 1.25rem;
+            scroll-behavior: smooth;
+        }
+
+        /* custom scrollbar for dark UI */
+        .chat-body::-webkit-scrollbar,
+        .side-body::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-body::-webkit-scrollbar-track,
+        .side-body::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+            border-radius: var(--radius-full);
+        }
+        .chat-body::-webkit-scrollbar-thumb,
+        .side-body::-webkit-scrollbar-thumb {
+            background: rgba(148,163,184,0.4);
+            border-radius: var(--radius-full);
+        }
+        .chat-body::-webkit-scrollbar-thumb:hover,
+        .side-body::-webkit-scrollbar-thumb:hover {
+            background: rgba(148,163,184,0.6);
+        }
+
+        .empty-hint {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            padding: 3rem 1rem;
+            border: 1px dashed var(--border-color);
+            border-radius: var(--radius-lg);
+            background-color: rgba(15,23,42,0.3);
+        }
+
+        /* ===== Messages / Bubbles ========================================== */
+
+        .message-row {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 1rem;
+            max-width: 80%;
+        }
+
+        .message-row.user {
+            align-self: flex-end;
+            text-align: right;
+        }
+
+        .message-row.agent {
+            align-self: flex-start;
+            text-align: left;
+        }
+
+        .bubble {
+            padding: 0.75rem 1rem;
+            font-size: 0.85rem;
+            line-height: 1.5;
+
+            /* Handle long content safely */
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: break-word;
+
+            border-radius: 25px;
+
+            display: inline-block;
+            max-width: 90%;
+            width: fit-content;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* USER bubble (right) */
+        .user .bubble {
+            background: var(--user-bubble);
+            color: #0f172a;
+            font-weight: 500;
+            box-shadow:
+                0 20px 40px rgba(56,189,248,0.4),
+                0 2px 8px rgba(0,0,0,0.4);
+        }
+
+        /* AGENT bubble (left) */
+        .agent .bubble {
+            background: var(--agent-bubble);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            box-shadow:
+                0 20px 40px rgba(0,0,0,0.17),
+                0 2px 8px rgba(0,0,0,0.6),
+                0 0 80px rgba(56,189,248,0.1);
+        }
+
+        /* Markdown-like formatting inside bubbles */
+        .bubble p {
+            margin: 0.4rem 0;
+        }
+
+        .bubble strong,
+        .bubble b {
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .bubble ul,
+        .bubble ol {
+            margin: 0.5rem 0 0.5rem 1.2rem;
+            padding: 0;
+        }
+
+        .bubble li {
+            margin: 0.25rem 0;
+            list-style: disc;
+            color: var(--text-primary);
+        }
+
+        .sender-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+            letter-spacing: -0.03em;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .trace-chip {
+            display: inline-flex;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.6rem;
+            line-height: 1.2;
+
+            background-color: rgba(15,23,42,0.6);
+            border: 1px solid var(--border-color);
+            color: var(--accent);
+
+            border-radius: var(--radius-full);
+            margin-top: 0.4rem;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+
+            white-space: nowrap;
+            font-family: "JetBrains Mono", Consolas, monospace;
+        }
+
+        /* ===== Chat Footer ================================================== */
+
+        .chat-footer {
+            border-top: 1px solid var(--border-color);
+            padding: 0.75rem 1rem 1rem 1rem;
+
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            background-color: rgba(15,23,42,0.5);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-full);
+            padding: 0.6rem 0.9rem;
+
+            display: flex;
+            align-items: center;
+
+            box-shadow:
+                0 20px 40px rgba(0,0,0,0.8),
+                0 2px 10px rgba(0,0,0,0.6),
+                0 0 60px rgba(56,189,248,0.15);
+        }
+
+        #userInput {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            line-height: 1.4;
+            font-family: inherit;
+        }
+
+        #userInput::placeholder {
+            color: var(--text-secondary);
+        }
+
+        #sendBtn {
+            background-color: var(--accent);
+            border: none;
+            color: #0f172a;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border-radius: var(--radius-full);
+            padding: 0.6rem 1rem;
+            cursor: pointer;
+
+            box-shadow:
+                0 20px 40px rgba(56,189,248,0.5),
+                0 2px 8px rgba(0,0,0,0.6);
+
+            transition: all 0.12s ease;
+            user-select: none;
+        }
+
+        #sendBtn:hover {
+            box-shadow:
+                0 24px 48px rgba(56,189,248,0.55),
+                0 3px 10px rgba(0,0,0,0.7);
+            transform: translateY(-1px);
+        }
+
+        #sendBtn:active {
+            transform: scale(0.97);
+            box-shadow:
+                0 10px 20px rgba(56,189,248,0.4),
+                0 1px 4px rgba(0,0,0,0.6);
+        }
+
+        /* ===== Side Panel =================================================== */
+
+        .side-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-xl);
+            backdrop-filter: blur(12px) saturate(160%);
+            min-height: 200px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow:
+                0 30px 120px rgba(0,0,0,0.6),
+                0 4px 16px rgba(0,0,0,0.6),
+                0 0 60px rgba(16,185,129,0.07);
+        }
+
+        .side-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .side-title {
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+        }
+
+        .side-sub {
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+            font-weight: 400;
+            margin-top: 0.4rem;
+            line-height: 1.4;
+        }
+
+        .side-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 1rem 1.25rem 1rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .trace-block {
+            background-color: rgba(15,23,42,0.5);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-color);
+            padding: 0.75rem;
+
+            font-family: "JetBrains Mono", Consolas, monospace;
+            color: var(--text-primary);
+
+            box-shadow:
+                0 20px 60px rgba(0,0,0,0.7),
+                0 2px 8px rgba(0,0,0,0.6),
+                0 0 60px rgba(16,185,129,0.07);
+        }
+
+        .trace-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .trace-steps-list {
+            font-size: 0.7rem;
+            line-height: 1.4;
+            color: var(--text-primary);
+            word-break: break-word;
+            white-space: pre-line;
+        }
+
+        .mini-hint {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            line-height: 1.3;
+            margin-top: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+<div class="app-shell">
+    <!-- Chat column -->
+    <div class="chat-card">
+        <div class="chat-header">
+            <div class="chat-header-left">
+                <div class="chat-title">
+                    <div class="status-dot"></div>
+                    <span>agent_1</span>
+                    <span style="color:var(--accent);font-weight:500;font-size:0.7rem;">online</span>
+                </div>
+                <div class="chat-subtitle">
+                    Graph-based ReAct agent with RAG, tools, and filters
+                </div>
+            </div>
+        </div>
+
+        <div id="chatBody" class="chat-body">
+            <div id="emptyHint" class="empty-hint">
+                Ask the agent something.<br />
+                Example: “Summarize my latest email” or “What is in memory about 5G?”
+            </div>
+        </div>
+
+        <div class="chat-footer">
+            <div class="input-wrapper">
+                <input id="userInput"
+                       placeholder="Type your request..."
+                       autocomplete="off" />
+            </div>
+            <button id="sendBtn">Send →</button>
+        </div>
+    </div>
+
+    <!-- Trace / side panel -->
+    <div class="side-card">
+        <div class="side-header">
+            <div class="side-title">
+                <span>Execution Trace</span>
+                <span class="side-sub">Pipeline steps from the last response</span>
+            </div>
+        </div>
+        <div class="side-body">
+            <div class="trace-block">
+                <div class="trace-label">
+                    <span>Trace</span>
+                </div>
+                <div id="traceSteps" class="trace-steps-list">
+                    (no calls yet)
+                </div>
+            </div>
+
+            <div class="mini-hint">
+                The trace comes from the agent graph:
+                retrieve → model → tools → final.<br /><br />
+                You can use this panel in your thesis to show how attacks travel through the pipeline.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- minimal markdown renderer for agent messages ---
+    function renderMarkdownLite(mdText) {
+        // 1. escape HTML so the model can't inject raw <script> etc
+        let safe = mdText
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+
+        // 2. bold: **text** -> <strong>text</strong>
+        safe = safe.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+        // 3. split lines and convert bullets / paragraphs
+        const lines = safe.split(/\r?\n/);
+        let htmlParts = [];
+        let inList = false;
+
+        for (let line of lines) {
+            const bulletMatch = line.match(/^\s*[\*\-]\s+(.*)$/);
+
+            if (bulletMatch) {
+                // bullet item
+                if (!inList) {
+                    inList = true;
+                    htmlParts.push("<ul>");
+                }
+                htmlParts.push("<li>" + bulletMatch[1] + "</li>");
+            } else {
+                // normal text line
+                if (inList) {
+                    inList = false;
+                    htmlParts.push("</ul>");
+                }
+
+                if (line.trim() === "") {
+                    // blank line -> visual break
+                    htmlParts.push("<br/>");
+                } else {
+                    htmlParts.push("<p>" + line + "</p>");
+                }
+            }
+        }
+
+        if (inList) {
+            htmlParts.push("</ul>");
+        }
+
+        return htmlParts.join("");
+    }
+
+    const chatBody = document.getElementById("chatBody");
+    const userInput = document.getElementById("userInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const emptyHint = document.getElementById("emptyHint");
+    const traceStepsEl = document.getElementById("traceSteps");
+
+    // utility to create message bubble in DOM
+    function addMessageBubble(sender, text, traceArr) {
+        // sender: "user" | "agent"
+        const row = document.createElement("div");
+        row.className = `message-row ${sender}`;
+
+        const label = document.createElement("div");
+        label.className = "sender-label";
+        label.textContent = sender === "user" ? "You" : "Agent";
+
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+
+        if (sender === "agent") {
+            // render agent text as simple markdown
+            bubble.innerHTML = renderMarkdownLite(text);
+        } else {
+            // render user text literally, do not interpret as HTML
+            bubble.textContent = text;
+        }
+
+        row.appendChild(label);
+        row.appendChild(bubble);
+
+        // add trace chip for agent only
+        if (sender === "agent" && traceArr && traceArr.length > 0) {
+            const chip = document.createElement("div");
+            chip.className = "trace-chip";
+            chip.textContent = traceArr.join(" → ");
+            row.appendChild(chip);
+        }
+
+        chatBody.appendChild(row);
+        chatBody.scrollTop = chatBody.scrollHeight;
+
+        if (emptyHint) {
+            emptyHint.style.display = "none";
+        }
+    }
+
+    async function sendMessage() {
+        const text = userInput.value.trim();
+        if (!text) return;
+
+        // show user bubble immediately
+        addMessageBubble("user", text);
+
+        // disable UI while sending
+        userInput.value = "";
+        userInput.disabled = true;
+        sendBtn.disabled = true;
+        sendBtn.textContent = "…";
+
+        try {
+            // call FastAPI
+            const res = await fetch("http://140.113.207.18:8000/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ user_input: text })
+            });
+
+            if (!res.ok) {
+                const errorText = await res.text();
+                console.error("Server error:", errorText);
+                addMessageBubble("agent", "⚠ Server error: " + errorText);
+                traceStepsEl.textContent = "(error)";
+            } else {
+                const data = await res.json();
+                // agent reply bubble
+                addMessageBubble("agent", data.answer || "(no answer)", data.trace || []);
+
+                // update right-side trace panel
+                if (data.trace && data.trace.length > 0) {
+                    traceStepsEl.textContent = data.trace.join(" → ");
+                } else {
+                    traceStepsEl.textContent = "(no steps)";
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            addMessageBubble("agent", "⚠ Network error. Check if FastAPI is running on :8000.");
+            traceStepsEl.textContent = "(network error)";
+        }
+
+        // re-enable UI
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        sendBtn.textContent = "Send →";
+        userInput.focus();
+    }
+
+    // send on button click
+    sendBtn.addEventListener("click", sendMessage);
+
+    // send on Enter (no Shift)
+    userInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+</script>
+</body>
+</html>

@@ -1,1 +1,6 @@
 .env
+/src/client_secret_579520335507-otu678aildm11gh2ll42j90dusb0aumn.apps.googleusercontent.com.json
+/src/.env
+/src/credentials.json
+/src/*.pkl
+/src/uploads
