@@ -746,44 +746,49 @@ def read_xlsx(file_name: str) -> str:
 
 
 
-# @tool(
-#     "create_xlsx",
-#     description=(
-#         "Create a .xlsx file in uploads/. If exists, auto-version the filename. "
-#         "Args: file_name, sheet_name, data (JSON list of lists for rows)."
-#     )
-# )
-# def create_xlsx(
-#     file_name: str,
-#     sheet_name: str,
-#     data: List[List[Union[str, float, int, None]]]
-# ) -> str:
-#     import json, os
-#     from openpyxl import Workbook
-#
-#     try:
-#         os.makedirs("uploads", exist_ok=True)
-#
-#         base_path = os.path.join("uploads", file_name)
-#         final_path = _resolve_filename(base_path)
-#
-#         wb = Workbook()
-#         ws = wb.active
-#         ws.title = sheet_name
-#
-#         for row in data:
-#             ws.append(row)
-#
-#         wb.save(final_path)
-#
-#         return json.dumps({"success": True, "file": os.path.basename(final_path)}, ensure_ascii=False)
-#
-#     except Exception as e:
-#         return json.dumps(
-#             {"error": True, "type": type(e).__name__, "message": str(e)},
-#             ensure_ascii=False
-#         )
+@tool(
+    "create_xlsx",
+    description=(
+        "Create a .xlsx file in uploads/. If the filename exists, auto-version it "
+        "using file_1.xlsx, file_2.xlsx, etc. "
+        "Args: file_name, sheet_name, data (JSON list of row lists)."
+    )
+)
+def create_xlsx(file_name: str, sheet_name: str, data: List[List[str]]) -> str:
+
+    try:
+        os.makedirs("uploads", exist_ok=True)
+
+        base_path = os.path.join("uploads", file_name)
+        final_path = _resolve_filename(base_path)
+        if not final_path.lower().endswith(".xlsx"):
+            final_path += ".xlsx"
+
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = sheet_name or "Sheet1"
+
+        # Write data rows (each row is a list)
+        for row in data:
+            # Ensure each row is a list of strings (LLM may pass numbers)
+            safe_row = [str(cell) if cell is not None else "" for cell in row]
+            ws.append(safe_row)
+
+        # Save file
+        wb.save(final_path)
+
+        return json.dumps(
+            {"success": True, "file": os.path.basename(final_path)},
+            ensure_ascii=False
+        )
+
+    except Exception as e:
+        return json.dumps(
+            {"error": True, "type": type(e).__name__, "message": str(e)},
+            ensure_ascii=False
+        )
 
 
-TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx]
+TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx, create_xlsx]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
