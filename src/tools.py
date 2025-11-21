@@ -12,6 +12,7 @@ import base64, email
 import re
 from docx import Document
 from openpyxl import load_workbook, Workbook
+from typing import List, Union
 
 # Constraints
 DEFAULT_MAX_RESULTS = 5
@@ -682,35 +683,36 @@ def read_docx(file_name: str) -> str:
             ensure_ascii=False
         )
 
-# @tool(
-#     "create_docx",
-#     description=(
-#         "Create a .docx file in uploads/. If filename exists, auto-create file_1.docx. "
-#         "Args: file_name, content"
-#     )
-# )
-# def create_docx(file_name: str, content: str) -> str:
-#
-#
-#     try:
-#         os.makedirs("uploads", exist_ok=True)
-#
-#         base_path = os.path.join("uploads", file_name)
-#         final_path = _resolve_filename(base_path)
-#
-#         doc = Document()
-#         for line in content.split("\n"):
-#             doc.add_paragraph(line)
-#
-#         doc.save(final_path)
-#
-#         return json.dumps({"success": True, "file": os.path.basename(final_path)}, ensure_ascii=False)
-#
-#     except Exception as e:
-#         return json.dumps(
-#             {"error": True, "type": type(e).__name__, "message": str(e)},
-#             ensure_ascii=False
-#         )
+@tool(
+    "create_docx",
+    description=(
+        "Create a .docx file in uploads/. If filename exists, auto-create file_1.docx. "
+        "Args: file_name, content"
+    )
+)
+def create_docx(file_name: str, content: str) -> str:
+
+
+    try:
+        os.makedirs("uploads", exist_ok=True)
+
+        base_path = os.path.join("uploads", file_name)
+        final_path = _resolve_filename(base_path)
+        if ".docx" not in final_path:
+            final_path += ".docx"
+        doc = Document()
+        for line in content.split("\n"):
+            doc.add_paragraph(line)
+
+        doc.save(final_path)
+
+        return json.dumps({"success": True, "file": os.path.basename(final_path)}, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps(
+            {"error": True, "type": type(e).__name__, "message": str(e)},
+            ensure_ascii=False
+        )
 
 @tool(
     "read_xlsx",
@@ -742,7 +744,7 @@ def read_xlsx(file_name: str) -> str:
             ensure_ascii=False
         )
 
-from typing import List, Union
+
 
 # @tool(
 #     "create_xlsx",
@@ -783,5 +785,5 @@ from typing import List, Union
 #         )
 
 
-TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx]
+TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}

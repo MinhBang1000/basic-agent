@@ -1,6 +1,1 @@
-## 5. Future Research Directions
-
-- Combining vector-based retrieval (FAISS or Chroma) with anomaly detection to flag unusual prompts.  
-- Building datasets that include multilingual and multi-turn injection examples.  
-- Mapping attacks and defenses to MITRE ATLAS and OWASP LLM01 categories.  
-- Studying correlated attacks such as **EchoLeak (CVE-2025-32711)** that target multi-agent memory shari
+invalid type: string "## 2. The Three-Layer Filtering Framework\n\nTo mitigate input injection risks, a layered defense strategy is used:\n\n1. **Rule-Based Filtering**  \n   Detects explicit malicious patterns using regular expressions, keyword blacklists, or allow-lists.  \n   Example: blocking commands like “system override”, “delete all”, or “run shell”.", expected f64earch Directi
