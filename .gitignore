@@ -42,3 +42,6 @@ src/chroma_db/
 
 # macOS files
 .DS_Store
+
+# Logs.txt
+/src/messages/*.txt
