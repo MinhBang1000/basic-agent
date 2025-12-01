@@ -1,1 +1,6 @@
-INSERT INTO "embedding_metadata" ("id", "key", "string_value", "int_value", "float_value", "bool_value") VALUES (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?) ON CONFLICT ("id", "key") DO UPDATE SET "string_value" = "excluded"."string_value", "int_value" = "excluded"."int_value", "float_value" = "excluded"."float_value", "bool_value" = "excluded"."bool_value"y shari
+## 5. Future Research Directions
+
+- Combining vector-based retrieval (FAISS or Chroma) with anomaly detection to flag unusual prompts.  
+- Building datasets that include multilingual and multi-turn injection examples.  
+- Mapping attacks and defenses to MITRE ATLAS and OWASP LLM01 categories.  
+- Studying correlated attacks such as **EchoLeak (CVE-2025-32711)** that target multi-agent memory shari

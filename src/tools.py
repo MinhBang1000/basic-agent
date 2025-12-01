@@ -19,6 +19,7 @@ from pdfminer.high_level import extract_text as pdf_extract_text
 DEFAULT_MAX_RESULTS = 5
 MAX_SNIPPET_CHARS = 800
 EMAIL_SEPARATOR = "\n---\n"
+MAX_BODY_CHARS = 2000  # max characters of email body to expose to the LLM
 
 # Scoring & flag rules
 URGENT_KEYWORDS = [
@@ -143,19 +144,94 @@ def get_gmail_service():
     service = build("gmail", "v1", credentials=creds)
     return service
 
-@tool("search_emails", description=(
-    "Use this tool to RETRIEVE a list of recent emails. "
-    "After getting the emails, the agent (you) can then perform tasks like summarization or analysis. "
-    "The 'query' argument accepts standard Gmail search queries (e.g., 'from:boss', 'is:unread', 'newer_than:2d')."
-))
-def search_emails(query: str = "", number_of_emails: int = DEFAULT_MAX_RESULTS, label_ids: Optional[List[str]] = None):
+def _parse_full_body(payload: Dict[str, Any]) -> str:
     """
-    Returns a single string containing up to `max_results` emails, each formatted as:
+    Extract a longer plain-text body from a Gmail payload.
+
+    - Prefer text/plain parts
+    - Fall back to text/html with tags stripped
+    - Walk all nested parts
+    - Truncate to MAX_BODY_CHARS to protect context window
+    """
+    parts = payload.get("parts") or []
+
+    texts: List[str] = []
+
+    def _walk(parts_list):
+        for p in parts_list:
+            mime = p.get("mimeType", "")
+            body = p.get("body", {}) or {}
+            data = body.get("data")
+
+            if data:
+                try:
+                    raw = base64.urlsafe_b64decode(data.encode("utf-8"))
+                    txt = raw.decode("utf-8", errors="replace")
+                    # Strip HTML tags if needed
+                    if mime == "text/html":
+                        txt = re.sub(r"<[^>]+>", "", txt)
+                    texts.append(txt)
+                except Exception:
+                    # Skip bad part and continue
+                    continue
+
+            # Nested multipart
+            if p.get("parts"):
+                _walk(p["parts"])
+
+    # Multipart case
+    if parts:
+        _walk(parts)
+        if not texts:
+            return ""
+
+        joined = "\n".join(texts).strip()
+        if len(joined) > MAX_BODY_CHARS:
+            joined = joined[:MAX_BODY_CHARS] + "..."
+        return joined
+
+    # Fallback: top-level body only
+    body = payload.get("body", {}) or {}
+    data = body.get("data")
+    if data:
+        try:
+            raw = base64.urlsafe_b64decode(data.encode("utf-8"))
+            txt = raw.decode("utf-8", errors="replace")
+            if len(txt) > MAX_BODY_CHARS:
+                txt = txt[:MAX_BODY_CHARS] + "..."
+            return txt
+        except Exception:
+            return ""
+
+    return ""
+
+@tool(
+    "search_emails",
+    description=(
+        "Use this tool to RETRIEVE a list of recent emails. "
+        "After getting the emails, the agent (you) can then perform tasks like summarization or analysis. "
+        "The 'query' argument accepts standard Gmail search queries (e.g., 'from:boss', 'is:unread', 'newer_than:2d')."
+    )
+)
+def search_emails(
+    query: str = "",
+    number_of_emails: int = DEFAULT_MAX_RESULTS,
+    label_ids: Optional[List[str]] = None
+):
+    """
+    Returns a single string containing up to `number_of_emails` emails, each formatted as:
+
+      ID: <gmail_id>
       From: <sender>
       Subject: <subject>
       Date: <date>
-      Snippet: <snippet>
-    separated by a line '---'.
+      Snippet: <short snippet>
+      Body: <first MAX_BODY_CHARS characters of decoded email body>
+      Has Attachment: <True/False>
+      Importance Score: <0-100>
+      Flags: <comma-separated flags>
+
+    Emails are separated by EMAIL_SEPARATOR (e.g. '\\n---\\n').
 
     On error, returns a string that starts with '[ToolError] ' followed by the error message.
     """
@@ -174,37 +250,121 @@ def search_emails(query: str = "", number_of_emails: int = DEFAULT_MAX_RESULTS, 
         if not msgs:
             return "No emails found."
 
-        pieces = []
+        pieces: List[str] = []
+
         for m in msgs:
             mid = m.get("id")
-            msg = service.users().messages().get(userId="me", id=mid, format="full").execute()
-            payload = msg.get("payload", {})
+            msg = service.users().messages().get(
+                userId="me",
+                id=mid,
+                format="full"
+            ).execute()
+
+            payload = msg.get("payload", {}) or {}
             headers = _extract_headers(payload.get("headers", []))
+
+            # Snippet (short preview)
             snippet = msg.get("snippet", "") or _parse_payload_snippet(payload) or ""
             if len(snippet) > MAX_SNIPPET_CHARS:
-                snippet = snippet[:MAX_SNIPPET_CHARS]+"..."
+                snippet = snippet[:MAX_SNIPPET_CHARS] + "..."
+
+            # Longer body text for the model to see injections
+            body_text = _parse_full_body(payload)
+            if not body_text:
+                body_text = snippet  # fallback so Body is never empty
+
             sender = headers.get("From", "(unknown)")
             subject = headers.get("Subject", "(no subject)")
             date = headers.get("Date", "(no date)")
-            has_attach = any(p.get("filename") for p in payload.get("parts") or [])
+            has_attach = any(
+                p.get("filename") for p in (payload.get("parts") or [])
+            )
+
+            # Importance scoring
             info = score_and_flag(subject, snippet)
+
             piece = (
                 f"ID: {mid}\n"
                 f"From: {sender}\n"
                 f"Subject: {subject}\n"
                 f"Date: {date}\n"
                 f"Snippet: {snippet[:MAX_SNIPPET_CHARS]}\n"
+                f"Body: {body_text}\n"
                 f"Has Attachment: {has_attach}\n"
                 f"Importance Score: {info['score']}/100\n"
                 f"Flags: {', '.join(info['flags']) if info['flags'] else 'None'}"
             )
             pieces.append(piece)
+
         result = EMAIL_SEPARATOR.join(pieces)
         print("Search tool: \n", result)
         return result
 
     except Exception as e:
         return f"[ToolError] {type(e).__name__}: {e}"
+
+# @tool("search_emails", description=(
+#     "Use this tool to RETRIEVE a list of recent emails. "
+#     "After getting the emails, the agent (you) can then perform tasks like summarization or analysis. "
+#     "The 'query' argument accepts standard Gmail search queries (e.g., 'from:boss', 'is:unread', 'newer_than:2d')."
+# ))
+# def search_emails(query: str = "", number_of_emails: int = DEFAULT_MAX_RESULTS, label_ids: Optional[List[str]] = None):
+#     """
+#     Returns a single string containing up to `max_results` emails, each formatted as:
+#       From: <sender>
+#       Subject: <subject>
+#       Date: <date>
+#       Snippet: <snippet>
+#     separated by a line '---'.
+#
+#     On error, returns a string that starts with '[ToolError] ' followed by the error message.
+#     """
+#     try:
+#         service = get_gmail_service()
+#         params = {
+#             "userId": "me",
+#             "q": query,
+#             "maxResults": number_of_emails
+#         }
+#         if label_ids:
+#             params["labelIds"] = label_ids
+#
+#         resp = service.users().messages().list(**params).execute()
+#         msgs = resp.get("messages", [])
+#         if not msgs:
+#             return "No emails found."
+#
+#         pieces = []
+#         for m in msgs:
+#             mid = m.get("id")
+#             msg = service.users().messages().get(userId="me", id=mid, format="full").execute()
+#             payload = msg.get("payload", {})
+#             headers = _extract_headers(payload.get("headers", []))
+#             snippet = msg.get("snippet", "") or _parse_payload_snippet(payload) or ""
+#             if len(snippet) > MAX_SNIPPET_CHARS:
+#                 snippet = snippet[:MAX_SNIPPET_CHARS]+"..."
+#             sender = headers.get("From", "(unknown)")
+#             subject = headers.get("Subject", "(no subject)")
+#             date = headers.get("Date", "(no date)")
+#             has_attach = any(p.get("filename") for p in payload.get("parts") or [])
+#             info = score_and_flag(subject, snippet)
+#             piece = (
+#                 f"ID: {mid}\n"
+#                 f"From: {sender}\n"
+#                 f"Subject: {subject}\n"
+#                 f"Date: {date}\n"
+#                 f"Snippet: {snippet[:MAX_SNIPPET_CHARS]}\n"
+#                 f"Has Attachment: {has_attach}\n"
+#                 f"Importance Score: {info['score']}/100\n"
+#                 f"Flags: {', '.join(info['flags']) if info['flags'] else 'None'}"
+#             )
+#             pieces.append(piece)
+#         result = EMAIL_SEPARATOR.join(pieces)
+#         print("Search tool: \n", result)
+#         return result
+#
+#     except Exception as e:
+#         return f"[ToolError] {type(e).__name__}: {e}"
 
 @tool("send_email", description="Send an email via Gmail. Args: to, subject, body")
 def send_email(to: str, subject: str, body: str) -> str:
@@ -578,6 +738,8 @@ def forward_email(message_id: str, to: str, body: str = "") -> str:
     try:
         service = get_gmail_service()
 
+
+
         # 1. Fetch original email
         msg = service.users().messages().get(
             userId="me", id=message_id, format="full"
@@ -619,6 +781,8 @@ def forward_email(message_id: str, to: str, body: str = "") -> str:
             userId="me",
             body={"raw": raw}
         ).execute()
+
+
 
         return json.dumps(
             {"success": True, "id": sent.get("id")},
