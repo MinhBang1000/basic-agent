@@ -17,22 +17,21 @@ def build_app():
     # graph define
     graph = StateGraph(MessagesState)
     graph.add_node("retrieve", lambda s: retrieve_context(s, chroma_db))
-    graph.add_node("model", lambda s: call_model(s, llm_with_tools))
+    graph.add_node("agent", lambda s: call_model(s, llm_with_tools))
     graph.add_node("tools", lambda s: call_tool(s, TOOLS_BY_NAME))
     graph.add_node("final", lambda s: final_model(s, llm_with_tools))
 
     graph.add_edge(START, "retrieve")
-    graph.add_edge("retrieve", "model")
+    graph.add_edge("retrieve", "agent")
     graph.add_conditional_edges(
-        "model", 
+        "agent", 
         should_call_tools,
         {
             "tool_calls": "tools",
             "no_tools": END
         }
     )
-    graph.add_edge("tools", "final")
-    graph.add_edge("final", END)
+    graph.add_edge("tools", "agent")
     checkpointer = MemorySaver()
     return graph.compile(checkpointer=checkpointer)
 
