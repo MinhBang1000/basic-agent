@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from main import build_app
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
 from datetime import datetime
 from pathlib import Path
@@ -54,15 +54,28 @@ def chat(request: ChatRequest):
     trace_steps = []
     final_answer = ""
 
+    num_events = 0
+
     for event in events:
         # Log the event to file
         log_raw_event(event)
-
+        num_events += 1
         node_name, payload = extract_event(event)
-        trace_steps.append(node_name)
+
+        # Should use try-catch here
+        message = payload["messages"][-1]
+        if isinstance(message, ToolMessage):
+            tool_name = message.name
+            trace_steps.append(tool_name)
+        else:
+            trace_steps.append(node_name)
+        
         last_message = payload["messages"][-1]
         if isinstance(last_message, AIMessage):
             final_answer = last_message.content
+
+    log_raw_event(f"\ntrace: {trace_steps}")
+    log_raw_event(f"Total events: {num_events}\n---\n")
 
     return ChatResponse(
         answer=final_answer,

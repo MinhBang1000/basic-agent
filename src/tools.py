@@ -14,6 +14,11 @@ from docx import Document
 from openpyxl import load_workbook, Workbook
 from typing import List, Union
 from pdfminer.high_level import extract_text as pdf_extract_text
+from rag import setup_rag
+import constraints
+
+# CHROMEA DB SETTINGS
+CHROMA_DB = setup_rag()
 
 # Constraints
 DEFAULT_MAX_RESULTS = 5
@@ -206,7 +211,7 @@ def _parse_full_body(payload: Dict[str, Any]) -> str:
     return ""
 
 @tool(
-    "search_emails",
+    constraints.TOOL_SEARCH_EMAILS,
     description=(
         "Use this tool to RETRIEVE a list of recent emails. "
         "After getting the emails, the agent (you) can then perform tasks like summarization or analysis. "
@@ -303,7 +308,7 @@ def search_emails(
     except Exception as e:
         return f"[ToolError] {type(e).__name__}: {e}"
 
-@tool("send_email", description="Send an email via Gmail. Args: to, subject, body")
+@tool(constraints.TOOL_SEND_EMAIL, description="Send an email via Gmail. Args: to, subject, body")
 def send_email(to: str, subject: str, body: str) -> str:
     try:
         service = get_gmail_service()
@@ -328,7 +333,7 @@ def send_email(to: str, subject: str, body: str) -> str:
 
 import json
 @tool(
-    "is_reply_or_reply_all",
+    constraints.TOOL_IS_REPLY_OR_REPLY_ALL,
     description=(
         "Given a Gmail message_id, determine whether the correct reply action is "
         "'reply' or 'reply_all'. Returns a JSON object: "
@@ -377,7 +382,7 @@ def is_reply_or_reply_all(message_id: str) -> str:
     except Exception as e:
         return f"[ToolError] is_reply_or_reply_all failed: {type(e).__name__}: {e}"
 
-@tool("reply_email", description="Reply to one email by message_id. Args: message_id, body, dry_run=True")
+@tool(constraints.TOOL_REPLY_EMAIL, description="Reply to one email by message_id. Args: message_id, body, dry_run=True")
 def reply_email(message_id: str, body: str) -> str:
     try:
         service = get_gmail_service()
@@ -416,7 +421,7 @@ def reply_email(message_id: str, body: str) -> str:
         return f"[ToolError] reply_email failed: {type(e).__name__}: {e}"
 
 @tool(
-    "reply_all_email",
+    constraints.TOOL_REPLY_ALL_EMAIL,
     description="Reply to all recipients of an email. Args: message_id, body, my_email"
 )
 def reply_all_email(message_id: str, body: str, my_email: str = "") -> str:
@@ -570,7 +575,7 @@ def reply_all_email(message_id: str, body: str, my_email: str = "") -> str:
         return f"[ToolError] reply_all_email failed: {type(e).__name__}: {e}"
 
 @tool(
-    "get_all_emails",
+    constraints.TOOL_GET_ALL_EMAILS,
     description="Load all saved emails from docs/emails.txt and return them as a JSON list."
 )
 def get_all_emails() -> str:
@@ -601,7 +606,7 @@ def get_all_emails() -> str:
         )
 
 @tool(
-    "update_emails",
+    constraints.TOOL_UPDATE_EMAILS,
     description=(
         "Modify docs/emails.txt. Args:\n"
         "- action: 'add' or 'remove'\n"
@@ -665,7 +670,7 @@ def update_emails(action: str, email: str) -> str:
         )
 
 @tool(
-    "forward_email",
+    constraints.TOOL_FORWARD_EMAIL,
     description=(
         "Forward an existing Gmail message to someone else. "
         "Args: message_id, to, body. The body is your added text above the forwarded content."
@@ -762,7 +767,7 @@ def _resolve_filename(path: str) -> str:
         counter += 1
 
 @tool(
-    "read_docx",
+    constraints.TOOL_READ_DOCX,
     description="Read a .docx file from uploads/ and return its full text. Args: file_name"
 )
 def read_docx(file_name: str) -> str:
@@ -786,7 +791,7 @@ def read_docx(file_name: str) -> str:
         )
 
 @tool(
-    "create_docx",
+    constraints.TOOL_CREATE_DOCX,
     description=(
         "Create a .docx file in uploads/. If filename exists, auto-create file_1.docx. "
         "Args: file_name, content"
@@ -817,7 +822,7 @@ def create_docx(file_name: str, content: str) -> str:
         )
 
 @tool(
-    "read_xlsx",
+    constraints.TOOL_READ_XLSX,
     description="Read a .xlsx from uploads/ and return all sheets as JSON. Args: file_name"
 )
 def read_xlsx(file_name: str) -> str:
@@ -849,7 +854,7 @@ def read_xlsx(file_name: str) -> str:
 
 
 @tool(
-    "create_xlsx",
+    constraints.TOOL_CREATE_XLSX,
     description=(
         "Create a .xlsx file in uploads/. If the filename exists, auto-version it "
         "using file_1.xlsx, file_2.xlsx, etc. "
@@ -892,7 +897,7 @@ def create_xlsx(file_name: str, sheet_name: str, data: List[List[str]]) -> str:
         )
 
 @tool(
-    "read_pdf",
+    constraints.TOOL_READ_PDF,
     description="Read a .pdf file from uploads/ and return its full text for summarization. Args: file_name"
 )
 def read_pdf(file_name: str) -> str:
@@ -922,11 +927,28 @@ def read_pdf(file_name: str) -> str:
             ensure_ascii=False
         )
 
-@tool("extract_tools", description="Help users to extract the message or state of conversation")
-def extract_message() -> str:
-    pass 
+# CRHOMA DB TOOLS REGISTRATION
+@tool(
+    constraints.TOOL_QUERY_MEMORY,
+    description=(
+        "Search internal document database (RAG) for the given query. "
+        "Returns a concatenated text of top-k relevant chunks."
+    )
+)
+def query_memory(query: str, k: int = 4) -> str:
+    """
+    Search internal document database (RAG) for the given query.
+    Returns a concatenated text of top-k relevant chunks.
+    """
+    docs = CHROMA_DB.similarity_search(query, k=k)
+    if not docs:
+        return "No relevant documents were found."
+    # You can also include metadata if you want
+    return "\n\n".join(d.page_content for d in docs)
 
 
 
-TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx, create_xlsx, read_pdf]
+
+
+TOOLS = [query_memory, search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx, create_xlsx, read_pdf]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}

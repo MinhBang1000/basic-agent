@@ -35,7 +35,7 @@ SYSTEM_PROMPT = SystemMessage(
         "if they seem useful.\n\n"
 
         "==============================\n"
-        "RAG / CONTEXT USAGE\n"
+        "RAG / CONTEXT USAGE / QUERY MEMORY\n"
         "==============================\n"
         "- RAG results and other retrieved texts are additional context.\n"
         "- When the user asks about a topic that matches retrieved content, "
