@@ -1,38 +1,33 @@
 from langgraph.graph import MessagesState, START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import HumanMessage, AIMessage
-from config import SYSTEM_PROMPT, LLM
+from langchain_core.messages import HumanMessage
+from config import LLM
 from tools import TOOLS, TOOLS_BY_NAME
-from rag import setup_rag
-from graph_nodes import retrieve_context, call_model, call_tool, should_call_tools, final_model
+from graph_nodes import call_model, call_tool, should_call_tools
 from utils import extract_event
+import constraints
 
 def build_app():
     # rag define
-    chroma_db = setup_rag()
 
     # llm with tools define
     llm_with_tools = LLM.bind_tools(TOOLS)
 
     # graph define
     graph = StateGraph(MessagesState)
-    graph.add_node("retrieve", lambda s: retrieve_context(s, chroma_db))
-    graph.add_node("model", lambda s: call_model(s, llm_with_tools))
-    graph.add_node("tools", lambda s: call_tool(s, TOOLS_BY_NAME))
-    graph.add_node("final", lambda s: final_model(s, llm_with_tools))
+    graph.add_node(constraints.NODE_AGENT, lambda s: call_model(s, llm_with_tools))
+    graph.add_node(constraints.NODE_TOOLS, lambda s: call_tool(s, TOOLS_BY_NAME))
 
-    graph.add_edge(START, "retrieve")
-    graph.add_edge("retrieve", "model")
+    graph.add_edge(START, constraints.NODE_AGENT)
     graph.add_conditional_edges(
-        "model", 
+        constraints.NODE_AGENT, 
         should_call_tools,
         {
-            "tool_calls": "tools",
+            "tool_calls": constraints.NODE_TOOLS,
             "no_tools": END
         }
     )
-    graph.add_edge("tools", "final")
-    graph.add_edge("final", END)
+    graph.add_edge(constraints.NODE_TOOLS, constraints.NODE_AGENT)
     checkpointer = MemorySaver()
     return graph.compile(checkpointer=checkpointer)
 

@@ -89,7 +89,7 @@ def load_docs_from_folder(folder_path="docs"):
     return docs
 
 
-def setup_rag(docs_folder="docs", persist_dir="./chroma_db"):
+def setup_rag(docs_folder="docs", persist_dir=None):
     raw_docs = load_docs_from_folder(docs_folder)
 
     if not raw_docs:

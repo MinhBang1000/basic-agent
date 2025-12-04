@@ -14,11 +14,17 @@ from docx import Document
 from openpyxl import load_workbook, Workbook
 from typing import List, Union
 from pdfminer.high_level import extract_text as pdf_extract_text
+from rag import setup_rag
+import constraints
+
+# CHROMEA DB SETTINGS
+CHROMA_DB = setup_rag()
 
 # Constraints
 DEFAULT_MAX_RESULTS = 5
 MAX_SNIPPET_CHARS = 800
 EMAIL_SEPARATOR = "\n---\n"
+MAX_BODY_CHARS = 2000  # max characters of email body to expose to the LLM
 
 # Scoring & flag rules
 URGENT_KEYWORDS = [
@@ -143,19 +149,94 @@ def get_gmail_service():
     service = build("gmail", "v1", credentials=creds)
     return service
 
-@tool("search_emails", description=(
-    "Use this tool to RETRIEVE a list of recent emails. "
-    "After getting the emails, the agent (you) can then perform tasks like summarization or analysis. "
-    "The 'query' argument accepts standard Gmail search queries (e.g., 'from:boss', 'is:unread', 'newer_than:2d')."
-))
-def search_emails(query: str = "", number_of_emails: int = DEFAULT_MAX_RESULTS, label_ids: Optional[List[str]] = None):
+def _parse_full_body(payload: Dict[str, Any]) -> str:
     """
-    Returns a single string containing up to `max_results` emails, each formatted as:
+    Extract a longer plain-text body from a Gmail payload.
+
+    - Prefer text/plain parts
+    - Fall back to text/html with tags stripped
+    - Walk all nested parts
+    - Truncate to MAX_BODY_CHARS to protect context window
+    """
+    parts = payload.get("parts") or []
+
+    texts: List[str] = []
+
+    def _walk(parts_list):
+        for p in parts_list:
+            mime = p.get("mimeType", "")
+            body = p.get("body", {}) or {}
+            data = body.get("data")
+
+            if data:
+                try:
+                    raw = base64.urlsafe_b64decode(data.encode("utf-8"))
+                    txt = raw.decode("utf-8", errors="replace")
+                    # Strip HTML tags if needed
+                    if mime == "text/html":
+                        txt = re.sub(r"<[^>]+>", "", txt)
+                    texts.append(txt)
+                except Exception:
+                    # Skip bad part and continue
+                    continue
+
+            # Nested multipart
+            if p.get("parts"):
+                _walk(p["parts"])
+
+    # Multipart case
+    if parts:
+        _walk(parts)
+        if not texts:
+            return ""
+
+        joined = "\n".join(texts).strip()
+        if len(joined) > MAX_BODY_CHARS:
+            joined = joined[:MAX_BODY_CHARS] + "..."
+        return joined
+
+    # Fallback: top-level body only
+    body = payload.get("body", {}) or {}
+    data = body.get("data")
+    if data:
+        try:
+            raw = base64.urlsafe_b64decode(data.encode("utf-8"))
+            txt = raw.decode("utf-8", errors="replace")
+            if len(txt) > MAX_BODY_CHARS:
+                txt = txt[:MAX_BODY_CHARS] + "..."
+            return txt
+        except Exception:
+            return ""
+
+    return ""
+
+@tool(
+    constraints.TOOL_SEARCH_EMAILS,
+    description=(
+        "Use this tool to RETRIEVE a list of recent emails. "
+        "After getting the emails, the agent (you) can then perform tasks like summarization or analysis. "
+        "The 'query' argument accepts standard Gmail search queries (e.g., 'from:boss', 'is:unread', 'newer_than:2d')."
+    )
+)
+def search_emails(
+    query: str = "",
+    number_of_emails: int = DEFAULT_MAX_RESULTS,
+    label_ids: Optional[List[str]] = None
+):
+    """
+    Returns a single string containing up to `number_of_emails` emails, each formatted as:
+
+      ID: <gmail_id>
       From: <sender>
       Subject: <subject>
       Date: <date>
-      Snippet: <snippet>
-    separated by a line '---'.
+      Snippet: <short snippet>
+      Body: <first MAX_BODY_CHARS characters of decoded email body>
+      Has Attachment: <True/False>
+      Importance Score: <0-100>
+      Flags: <comma-separated flags>
+
+    Emails are separated by EMAIL_SEPARATOR (e.g. '\\n---\\n').
 
     On error, returns a string that starts with '[ToolError] ' followed by the error message.
     """
@@ -174,31 +255,52 @@ def search_emails(query: str = "", number_of_emails: int = DEFAULT_MAX_RESULTS, 
         if not msgs:
             return "No emails found."
 
-        pieces = []
+        pieces: List[str] = []
+
         for m in msgs:
             mid = m.get("id")
-            msg = service.users().messages().get(userId="me", id=mid, format="full").execute()
-            payload = msg.get("payload", {})
+            msg = service.users().messages().get(
+                userId="me",
+                id=mid,
+                format="full"
+            ).execute()
+
+            payload = msg.get("payload", {}) or {}
             headers = _extract_headers(payload.get("headers", []))
+
+            # Snippet (short preview)
             snippet = msg.get("snippet", "") or _parse_payload_snippet(payload) or ""
             if len(snippet) > MAX_SNIPPET_CHARS:
-                snippet = snippet[:MAX_SNIPPET_CHARS]+"..."
+                snippet = snippet[:MAX_SNIPPET_CHARS] + "..."
+
+            # Longer body text for the model to see injections
+            body_text = _parse_full_body(payload)
+            if not body_text:
+                body_text = snippet  # fallback so Body is never empty
+
             sender = headers.get("From", "(unknown)")
             subject = headers.get("Subject", "(no subject)")
             date = headers.get("Date", "(no date)")
-            has_attach = any(p.get("filename") for p in payload.get("parts") or [])
+            has_attach = any(
+                p.get("filename") for p in (payload.get("parts") or [])
+            )
+
+            # Importance scoring
             info = score_and_flag(subject, snippet)
+
             piece = (
                 f"ID: {mid}\n"
                 f"From: {sender}\n"
                 f"Subject: {subject}\n"
                 f"Date: {date}\n"
                 f"Snippet: {snippet[:MAX_SNIPPET_CHARS]}\n"
+                f"Body: {body_text}\n"
                 f"Has Attachment: {has_attach}\n"
                 f"Importance Score: {info['score']}/100\n"
                 f"Flags: {', '.join(info['flags']) if info['flags'] else 'None'}"
             )
             pieces.append(piece)
+
         result = EMAIL_SEPARATOR.join(pieces)
         print("Search tool: \n", result)
         return result
@@ -206,7 +308,7 @@ def search_emails(query: str = "", number_of_emails: int = DEFAULT_MAX_RESULTS, 
     except Exception as e:
         return f"[ToolError] {type(e).__name__}: {e}"
 
-@tool("send_email", description="Send an email via Gmail. Args: to, subject, body")
+@tool(constraints.TOOL_SEND_EMAIL, description="Send an email via Gmail. Args: to, subject, body")
 def send_email(to: str, subject: str, body: str) -> str:
     try:
         service = get_gmail_service()
@@ -231,7 +333,7 @@ def send_email(to: str, subject: str, body: str) -> str:
 
 import json
 @tool(
-    "is_reply_or_reply_all",
+    constraints.TOOL_IS_REPLY_OR_REPLY_ALL,
     description=(
         "Given a Gmail message_id, determine whether the correct reply action is "
         "'reply' or 'reply_all'. Returns a JSON object: "
@@ -280,7 +382,7 @@ def is_reply_or_reply_all(message_id: str) -> str:
     except Exception as e:
         return f"[ToolError] is_reply_or_reply_all failed: {type(e).__name__}: {e}"
 
-@tool("reply_email", description="Reply to one email by message_id. Args: message_id, body, dry_run=True")
+@tool(constraints.TOOL_REPLY_EMAIL, description="Reply to one email by message_id. Args: message_id, body, dry_run=True")
 def reply_email(message_id: str, body: str) -> str:
     try:
         service = get_gmail_service()
@@ -319,7 +421,7 @@ def reply_email(message_id: str, body: str) -> str:
         return f"[ToolError] reply_email failed: {type(e).__name__}: {e}"
 
 @tool(
-    "reply_all_email",
+    constraints.TOOL_REPLY_ALL_EMAIL,
     description="Reply to all recipients of an email. Args: message_id, body, my_email"
 )
 def reply_all_email(message_id: str, body: str, my_email: str = "") -> str:
@@ -473,7 +575,7 @@ def reply_all_email(message_id: str, body: str, my_email: str = "") -> str:
         return f"[ToolError] reply_all_email failed: {type(e).__name__}: {e}"
 
 @tool(
-    "get_all_emails",
+    constraints.TOOL_GET_ALL_EMAILS,
     description="Load all saved emails from docs/emails.txt and return them as a JSON list."
 )
 def get_all_emails() -> str:
@@ -504,7 +606,7 @@ def get_all_emails() -> str:
         )
 
 @tool(
-    "update_emails",
+    constraints.TOOL_UPDATE_EMAILS,
     description=(
         "Modify docs/emails.txt. Args:\n"
         "- action: 'add' or 'remove'\n"
@@ -568,7 +670,7 @@ def update_emails(action: str, email: str) -> str:
         )
 
 @tool(
-    "forward_email",
+    constraints.TOOL_FORWARD_EMAIL,
     description=(
         "Forward an existing Gmail message to someone else. "
         "Args: message_id, to, body. The body is your added text above the forwarded content."
@@ -577,6 +679,8 @@ def update_emails(action: str, email: str) -> str:
 def forward_email(message_id: str, to: str, body: str = "") -> str:
     try:
         service = get_gmail_service()
+
+
 
         # 1. Fetch original email
         msg = service.users().messages().get(
@@ -620,6 +724,8 @@ def forward_email(message_id: str, to: str, body: str = "") -> str:
             body={"raw": raw}
         ).execute()
 
+
+
         return json.dumps(
             {"success": True, "id": sent.get("id")},
             ensure_ascii=False
@@ -661,7 +767,7 @@ def _resolve_filename(path: str) -> str:
         counter += 1
 
 @tool(
-    "read_docx",
+    constraints.TOOL_READ_DOCX,
     description="Read a .docx file from uploads/ and return its full text. Args: file_name"
 )
 def read_docx(file_name: str) -> str:
@@ -685,7 +791,7 @@ def read_docx(file_name: str) -> str:
         )
 
 @tool(
-    "create_docx",
+    constraints.TOOL_CREATE_DOCX,
     description=(
         "Create a .docx file in uploads/. If filename exists, auto-create file_1.docx. "
         "Args: file_name, content"
@@ -716,7 +822,7 @@ def create_docx(file_name: str, content: str) -> str:
         )
 
 @tool(
-    "read_xlsx",
+    constraints.TOOL_READ_XLSX,
     description="Read a .xlsx from uploads/ and return all sheets as JSON. Args: file_name"
 )
 def read_xlsx(file_name: str) -> str:
@@ -748,7 +854,7 @@ def read_xlsx(file_name: str) -> str:
 
 
 @tool(
-    "create_xlsx",
+    constraints.TOOL_CREATE_XLSX,
     description=(
         "Create a .xlsx file in uploads/. If the filename exists, auto-version it "
         "using file_1.xlsx, file_2.xlsx, etc. "
@@ -791,7 +897,7 @@ def create_xlsx(file_name: str, sheet_name: str, data: List[List[str]]) -> str:
         )
 
 @tool(
-    "read_pdf",
+    constraints.TOOL_READ_PDF,
     description="Read a .pdf file from uploads/ and return its full text for summarization. Args: file_name"
 )
 def read_pdf(file_name: str) -> str:
@@ -821,6 +927,32 @@ def read_pdf(file_name: str) -> str:
             ensure_ascii=False
         )
 
+# CRHOMA DB TOOLS REGISTRATION
+@tool(
+    constraints.TOOL_QUERY_MEMORY,
+    description=(
+        "Search internal document database (RAG) for the given query. "
+        "Returns a concatenated text of top-k relevant chunks."
+    )
+)
+def query_memory(query: str, k: int = 4) -> str:
+    """
+    Search internal document database (RAG) for the given query.
+    Returns a concatenated text of top-k relevant chunks.
+    """
+    docs = CHROMA_DB.similarity_search(query, k=k)
+    for i, d in enumerate(docs, 1):
+        print(f"--- DOC {i} ---")
+        print(d.page_content)
+        print(d.metadata)
+    if not docs:
+        return "No relevant documents were found."
+    # You can also include metadata if you want
+    return "\n\n".join(d.page_content for d in docs)
 
-TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx, create_xlsx, read_pdf]
+
+
+
+
+TOOLS = [query_memory, search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx, create_xlsx, read_pdf]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
