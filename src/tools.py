@@ -941,6 +941,10 @@ def query_memory(query: str, k: int = 4) -> str:
     Returns a concatenated text of top-k relevant chunks.
     """
     docs = CHROMA_DB.similarity_search(query, k=k)
+    for i, d in enumerate(docs, 1):
+        print(f"--- DOC {i} ---")
+        print(d.page_content)
+        print(d.metadata)
     if not docs:
         return "No relevant documents were found."
     # You can also include metadata if you want
