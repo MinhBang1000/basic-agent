@@ -3,16 +3,26 @@ from config import SYSTEM_PROMPT
 from typing import List, Dict, Any
 import uuid, json
 
-def retrieve_context(state, chroma_db):
+
+def retrieve_context(state, chroma_db, k=2):
+    # Lấy user message cuối cùng
     last_user_message = next(
         (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
         ""
     )
-    docs = chroma_db.similarity_search(last_user_message, k = 2)
-    context = "\n\n".join([d.page_content for d in docs])
+
+    # RAG retrieval
+    docs = chroma_db.similarity_search(last_user_message, k=k)
+
+    context = "\n\n".join(
+        f"[Doc {i+1}]\n{d.page_content}"
+        for i, d in enumerate(docs)
+    )
+
+    # Inject context như system-level knowledge
     return {
-        "messages": [
-            SystemMessage(content=f"Relevant context:\n{context}")
+        "messages": state["messages"] + [
+            SystemMessage(content=f"Relevant retrieved context:\n{context}")
         ]
     }
 

@@ -1,13 +1,15 @@
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import SystemMessage
+from langchain_openai import ChatOpenAI
 import os
 
 load_dotenv()
 
-LLM = init_chat_model(
-    model="google_genai:gemini-2.0-flash",
-    temperature = 0.6 
+LLM = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0.6,
+    openai_api_key=os.getenv("OPENAI_API_KEY"),
 )
 
 SYSTEM_PROMPT = SystemMessage(

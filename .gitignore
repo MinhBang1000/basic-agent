@@ -4,6 +4,12 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.jsonl
+*.csv
+
+# Docs
+src/docs/*.csv
+src/docs/*.jsonl
 
 # Environment variables
 .env
