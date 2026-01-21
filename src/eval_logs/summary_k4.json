@@ -1,0 +1,24 @@
+[
+  {
+    "mode": "poisoned_as",
+    "k": 4,
+    "num_queries": 100,
+    "retrieval_hit_count": 78,
+    "attack_success_count": 1,
+    "R_at_k": 0.78,
+    "ASR_at_k": 0.01,
+    "csv_path": "D:\\Laboratory\\Thesis\\Code\\basic_agent\\src\\eval_logs\\eval_poisoned_as_k4.csv",
+    "jsonl_path": "D:\\Laboratory\\Thesis\\Code\\basic_agent\\src\\eval_logs\\eval_poisoned_as_k4.jsonl"
+  },
+  {
+    "mode": "poisoned_ak",
+    "k": 4,
+    "num_queries": 100,
+    "retrieval_hit_count": 80,
+    "attack_success_count": 0,
+    "R_at_k": 0.8,
+    "ASR_at_k": 0.0,
+    "csv_path": "D:\\Laboratory\\Thesis\\Code\\basic_agent\\src\\eval_logs\\eval_poisoned_ak_k4.csv",
+    "jsonl_path": "D:\\Laboratory\\Thesis\\Code\\basic_agent\\src\\eval_logs\\eval_poisoned_ak_k4.jsonl"
+  }
+]

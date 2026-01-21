@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from main import build_app
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from rag import setup_rag
 
 from datetime import datetime
 from pathlib import Path
@@ -20,8 +21,9 @@ def log_raw_event(event):
     with LOG_FILE.open("a", encoding="utf-8") as f:
         f.write(str(event)+"\n")
 
-
-agent_app = build_app()
+MODE = 2
+CHROMA_DB = setup_rag(MODE)
+agent_app = build_app(CHROMA_DB)
 THREAD_ID = "agent_1"
 
 class ChatRequest(BaseModel):

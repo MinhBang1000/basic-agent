@@ -17,8 +17,8 @@ from pdfminer.high_level import extract_text as pdf_extract_text
 from rag import setup_rag
 import constraints
 
-# CHROMEA DB SETTINGS
-CHROMA_DB = setup_rag()
+# # CHROMEA DB SETTINGS
+# CHROMA_DB = setup_rag()
 
 # Constraints
 DEFAULT_MAX_RESULTS = 5
@@ -927,32 +927,32 @@ def read_pdf(file_name: str) -> str:
             ensure_ascii=False
         )
 
-# CRHOMA DB TOOLS REGISTRATION
-@tool(
-    constraints.TOOL_QUERY_MEMORY,
-    description=(
-        "Search internal document database (RAG) for the given query. "
-        "Returns a concatenated text of top-k relevant chunks."
-    )
-)
-def query_memory(query: str, k: int = 4) -> str:
-    """
-    Search internal document database (RAG) for the given query.
-    Returns a concatenated text of top-k relevant chunks.
-    """
-    docs = CHROMA_DB.similarity_search(query, k=k)
-    for i, d in enumerate(docs, 1):
-        print(f"--- DOC {i} ---")
-        print(d.page_content)
-        print(d.metadata)
-    if not docs:
-        return "No relevant documents were found."
-    # You can also include metadata if you want
-    return "\n\n".join(d.page_content for d in docs)
+# # CRHOMA DB TOOLS REGISTRATION
+# @tool(
+#     constraints.TOOL_QUERY_MEMORY,
+#     description=(
+#         "Search internal document database (RAG) for the given query. "
+#         "Returns a concatenated text of top-k relevant chunks."
+#     )
+# )
+# def query_memory(query: str, k: int = 4) -> str:
+#     """
+#     Search internal document database (RAG) for the given query.
+#     Returns a concatenated text of top-k relevant chunks.
+#     """
+#     docs = CHROMA_DB.similarity_search(query, k=k)
+#     for i, d in enumerate(docs, 1):
+#         print(f"--- DOC {i} ---")
+#         print(d.page_content)
+#         print(d.metadata)
+#     if not docs:
+#         return "No relevant documents were found."
+#     # You can also include metadata if you want
+#     return "\n\n".join(d.page_content for d in docs)
 
 
 
 
 
-TOOLS = [query_memory, search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx, create_xlsx, read_pdf]
+TOOLS = [search_emails, send_email, reply_email, reply_all_email, is_reply_or_reply_all, get_all_emails, update_emails, forward_email, read_docx, read_xlsx, create_docx, create_xlsx, read_pdf]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
