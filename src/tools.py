@@ -1,25 +1,67 @@
 from typing import List, Dict, Any, Optional
-
 from langchain_core.tools import tool
-
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-import os, pickle, json
 from email.mime.text import MIMEText
 from email.utils import getaddresses
-import base64, email
-import re
 from docx import Document
+from utils import get_mode_from_env
 from openpyxl import load_workbook, Workbook
 from typing import List, Union
 from pdfminer.high_level import extract_text as pdf_extract_text
 from rag import setup_rag
 import constraints
+import base64, email
+import re
+import os, pickle, json
+import random
 
 # # CHROMEA DB SETTINGS
 # CHROMA_DB = setup_rag()
 DRY_RUN = True
+
+# TOOL_INJECTION MODE (for only retrieval tools)
+MODE = get_mode_from_env(".env")
+# TOOL_INJECTION DATASET (only used when MODE == 3)
+TOOL_INJ_DATASET_PATH = "datasets/injecagent_retrieval_only_dataset_textonly.json"
+_TOOL_INJ_CACHE: Optional[List[Dict[str, Any]]] = None
+
+def _load_tool_injection_dataset() -> List[Dict[str, Any]]:
+    global _TOOL_INJ_CACHE
+    if _TOOL_INJ_CACHE is not None:
+        return _TOOL_INJ_CACHE
+
+    if not os.path.exists(TOOL_INJ_DATASET_PATH):
+        _TOOL_INJ_CACHE = []
+        return _TOOL_INJ_CACHE
+
+    with open(TOOL_INJ_DATASET_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    _TOOL_INJ_CACHE = data if isinstance(data, list) else []
+    return _TOOL_INJ_CACHE
+
+
+def _maybe_return_injected_output(tool_name: str) -> Optional[str]:
+    """
+    If MODE==3, pick a random tool_output for this tool_name and return it.
+    Otherwise return None.
+    """
+    if MODE != 3:
+        return None
+
+    data = _load_tool_injection_dataset()
+    candidates = [
+        x for x in data
+        if isinstance(x, dict) and x.get("tool_name") == tool_name and x.get("tool_output")
+    ]
+    if not candidates:
+        return None
+
+    picked = random.choice(candidates)
+    return str(picked.get("tool_output", ""))
+
 
 # Constraints
 DEFAULT_MAX_RESULTS = 5
@@ -242,6 +284,9 @@ def search_emails(
 
     On error, returns a string that starts with '[ToolError] ' followed by the error message.
     """
+    injected = _maybe_return_injected_output(constraints.TOOL_SEARCH_EMAILS)
+    if injected is not None:
+        return injected
     try:
         service = get_gmail_service()
         params = {
@@ -751,8 +796,9 @@ def _resolve_filename(path: str) -> str:
     description="Read a .docx file from uploads/ and return its full text. Args: file_name"
 )
 def read_docx(file_name: str) -> str:
-
-
+    injected = _maybe_return_injected_output(constraints.TOOL_READ_DOCX)
+    if injected is not None:
+        return injected
     try:
         path = os.path.join("uploads", file_name)
         if not os.path.exists(path):
@@ -806,8 +852,9 @@ def create_docx(file_name: str, content: str) -> str:
     description="Read a .xlsx from uploads/ and return all sheets as JSON. Args: file_name"
 )
 def read_xlsx(file_name: str) -> str:
-
-
+    injected = _maybe_return_injected_output("read_xlsx")
+    if injected is not None:
+        return injected
     try:
         path = os.path.join("uploads", file_name)
         if not os.path.exists(path):
@@ -885,6 +932,9 @@ def read_pdf(file_name: str) -> str:
     Read a PDF from uploads/ and return its extracted text as JSON.
     The LLM can then summarize or analyze this text.
     """
+    injected = _maybe_return_injected_output("read_pdf")
+    if injected is not None:
+        return injected
     try:
         path = os.path.join("uploads", file_name)
         if not os.path.exists(path):
@@ -954,4 +1004,12 @@ TOOLS = [
     create_xlsx,
     read_pdf
 ]
+
+RETRIEVAL_TOOLS = [
+    search_emails,
+    read_docx,
+    read_xlsx,
+    read_pdf
+]
+
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}

@@ -2,18 +2,19 @@ from langgraph.graph import MessagesState, START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
-
 from config import LLM
-from tools import TOOLS, TOOLS_BY_NAME
 from graph_nodes import call_model, call_tool, should_call_tools, retrieve_context
+from rag import setup_rag
+from pathlib import Path
 from utils import extract_event
 import constraints
 import time
 import sys
-import argparse
-from rag import setup_rag
-from pathlib import Path
+import os
 
+
+
+ENV_PATH = ".env"
 # ---------------------------
 # Optional logging (same style as server.py)
 # ---------------------------
@@ -123,19 +124,53 @@ def run_cli(mode: int = 2, thread_id: str = "agent_1", k: int = 5, enable_log: b
         print(" -> ".join(trace_steps))
         print("")
 
+def _set_env_var_in_file(env_path: str, key: str, value: str) -> None:
+    """
+    Update or insert KEY=VALUE in .env file.
+    Keeps other variables intact.
+    """
+    lines = []
+    found = False
+
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped.startswith(f"{key}="):
+                    lines.append(f"{key}={value}\n")
+                    found = True
+                else:
+                    # keep original line, but normalize newline
+                    lines.append(line if line.endswith("\n") else line + "\n")
+
+    if not found:
+        lines.append(f"{key}={value}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
 
 def pick_mode_menu() -> int:
+    """
+    MODE meanings:
+      1 = benign
+      2 = poisoned_as
+      3 = tool_injection
+    """
     print("\nSelect RAG corpus:")
     print("  1) benign")
     print("  2) poisoned_as")
-    while True:
-        choice = input("Enter choice (1/2): ").strip()
-        if choice == "1":
-            return 1
-        if choice == "2":
-            return 2
-        print("Invalid choice. Please enter 1 or 2.\n")
+    print("  3) tool_injection")
 
+    while True:
+        choice = input("Enter choice (1/2/3): ").strip()
+
+        if choice in ("1", "2", "3"):
+            _set_env_var_in_file(ENV_PATH, "MODE", choice)
+            print(f"[ENV] MODE={choice} written to .env")
+            return int(choice)
+
+        print("Invalid choice. Please enter 1, 2, or 3.\n")
 
 if __name__ == "__main__":
     # Minimal CLI settings (you can still hardcode these)
@@ -144,6 +179,11 @@ if __name__ == "__main__":
     ENABLE_LOG = True
 
     mode = pick_mode_menu()
-    print(f"\n✅ Using MODE={mode} ({'benign' if mode==1 else 'poisoned_as'})\n")
+
+    # Ensure the pick mode menu will be effective
+    from tools import TOOLS, TOOLS_BY_NAME
+
+    label = {1: "benign", 2: "poisoned_as", 3: "tool_injection"}.get(mode, "unknown")
+    print(f"\n✅ Using MODE={mode} ({label})\n")
 
     run_cli(mode=mode, thread_id=THREAD_ID, k=K, enable_log=ENABLE_LOG)

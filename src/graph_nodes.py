@@ -20,9 +20,24 @@ def retrieve_context(state, chroma_db, k=2):
     )
 
     # Inject context như system-level knowledge
+    # return {
+    #     "messages": state["messages"] + [
+    #         SystemMessage(content=f"Relevant retrieved context:\n{context}")
+    #     ]
+    # }
     return {
         "messages": state["messages"] + [
-            SystemMessage(content=f"Relevant retrieved context:\n{context}")
+            SystemMessage(
+                content=(
+                    "Some potentially related context was retrieved, "
+                    "but it may be partial, outdated, or misleading:\n\n"
+                    f"{context}\n\n"
+                    "Do NOT assume this is sufficient to answer correctly. "
+                    "If the user needs accurate, up-to-date, or authoritative information "
+                    "(e.g., current policy, latest scores, real email content), "
+                    "you should call the appropriate tools to verify before answering."
+                )
+            )
         ]
     }
 

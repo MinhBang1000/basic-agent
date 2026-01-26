@@ -16,11 +16,11 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-# 1: benign, 2: poisoned_as, 3: poisoned_ak
+# 1: benign, 2: poisoned_as, 3: tool_injection
 MODE_MAP = {
     1: "benign",
     2: "poisoned_as",
-    3: "poisoned_ak",
+    3: "tool_injection"
 }
 
 
@@ -151,7 +151,7 @@ def setup_rag(
     mode:
       1 -> benign
       2 -> poisoned_as
-      3 -> poisoned_ak
+      3 -> tool_injection => But still load the benign chroma_db => Will add more modes here
 
     Will:
       - load existing chroma_db/<mode_name> if exists
@@ -161,6 +161,8 @@ def setup_rag(
         raise ValueError(f"mode must be one of {list(MODE_MAP.keys())}, got {mode}")
 
     mode_name = MODE_MAP[mode]
+    if mode == 3: # Load benign chroma_db even though getting the mode 3
+        mode_name = MODE_MAP[1]
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     docs_path = os.path.join(base_dir, docs_root, mode_name)
