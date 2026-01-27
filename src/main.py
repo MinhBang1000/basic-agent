@@ -105,7 +105,7 @@ def run_cli(mode: int = 2, thread_id: str = "agent_1", k: int = 5, enable_log: b
                 {"messages": [HumanMessage(content=user)]},
                 config={
                     "configurable": {"thread_id": thread_id},
-                    "recursion_limit": 25,   # bạn có thể tăng lên 25/50 nếu muốn
+                    "recursion_limit": 25,
                 },
             )
 
