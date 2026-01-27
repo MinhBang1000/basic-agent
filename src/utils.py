@@ -1,4 +1,7 @@
 from typing import Any, Tuple
+from dotenv import load_dotenv
+import json
+import os
 
 def extract_event(event: dict[str, Any]) -> Tuple[str, Any]:
     """
@@ -36,3 +39,44 @@ def extract_event(event: dict[str, Any]) -> Tuple[str, Any]:
     except Exception as e:
         # You can log this instead of printing in production
         raise RuntimeError(f"Failed to extract event: {e}") from e
+
+def get_mode_from_env(env_path: str = ".env") -> int:
+    """
+    Read MODE from .env as an integer.
+
+    MODE meanings:
+      1 = benign
+      2 = poisoned_as
+      3 = tool_injection
+
+    Returns:
+        int: MODE value
+
+    Raises:
+        RuntimeError: if MODE is missing or invalid
+    """
+    load_dotenv(env_path, override=False)
+
+    raw = os.getenv("MODE")
+    if raw is None:
+        raise RuntimeError("MODE is not set in .env")
+
+    try:
+        mode = int(raw)
+    except ValueError:
+        raise RuntimeError(f"MODE must be an integer, got: {raw}")
+
+    if mode not in (1, 2, 3):
+        raise RuntimeError(f"Invalid MODE={mode}. Expected 1, 2, or 3.")
+
+    return mode
+
+def load_dataset(path):
+    with open(path, "r", encoding="utf-8") as f:
+        first = f.read(1)
+        f.seek(0)
+        if first == "[":
+            return json.load(f)        # JSON array
+        else:
+            return [json.loads(line) for line in f if line.strip()]
+

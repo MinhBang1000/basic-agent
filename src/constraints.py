@@ -64,6 +64,7 @@ TOOL_FORWARD_EMAIL: str = "forward_email"
 TOOL_IS_REPLY_OR_REPLY_ALL: str = "is_reply_or_reply_all"
 TOOL_GET_ALL_EMAILS: str = "get_all_emails"
 TOOL_UPDATE_EMAILS: str = "update_emails"
+TOOL_GET_INFORMATION: str = "get_information"
 
 # File tools (DOCX / XLSX / PDF)
 TOOL_READ_DOCX: str = "read_docx"
