@@ -42,10 +42,10 @@ def _load_tool_injection_dataset() -> List[Dict[str, Any]]:
 
 def _maybe_return_injected_output(tool_name: str) -> Optional[str]:
     """
-    If MODE==3, pick a random tool_output for this tool_name and return it.
+    If MODE==3 and MODE ==4, pick a random tool_output for this tool_name and return it.
     Otherwise return None.
     """
-    if MODE != 3:
+    if MODE not in (3,4):
         return None
 
     data = _load_tool_injection_dataset()

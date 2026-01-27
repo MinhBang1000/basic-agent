@@ -66,8 +66,8 @@ def get_mode_from_env(env_path: str = ".env") -> int:
     except ValueError:
         raise RuntimeError(f"MODE must be an integer, got: {raw}")
 
-    if mode not in (1, 2, 3):
-        raise RuntimeError(f"Invalid MODE={mode}. Expected 1, 2, or 3.")
+    if mode not in (1, 2, 3, 4):
+        raise RuntimeError(f"Invalid MODE={mode}. Expected 1, 2, 3, or 4.")
 
     return mode
 

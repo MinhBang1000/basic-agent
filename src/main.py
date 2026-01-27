@@ -189,21 +189,23 @@ def pick_mode_menu() -> int:
       1 = benign
       2 = poisoned_as
       3 = tool_injection
+      4 = correlated_injection
     """
     print("\nSelect RAG corpus:")
     print("  1) benign")
     print("  2) poisoned_as")
     print("  3) tool_injection")
+    print("  4) correlated_injection")
 
     while True:
-        choice = input("Enter choice (1/2/3): ").strip()
+        choice = input("Enter choice (1/2/3/4): ").strip()
 
-        if choice in ("1", "2", "3"):
+        if choice in ("1", "2", "3", "4"):
             _set_env_var_in_file(ENV_PATH, "MODE", choice)
             print(f"[ENV] MODE={choice} written to .env")
             return int(choice)
 
-        print("Invalid choice. Please enter 1, 2, or 3.\n")
+        print("Invalid choice. Please enter 1, 2, 3, or 4.\n")
 
 if __name__ == "__main__":
     # Minimal CLI settings (you can still hardcode these)
@@ -213,7 +215,7 @@ if __name__ == "__main__":
 
     mode = pick_mode_menu()
 
-    label = {1: "benign", 2: "poisoned_as", 3: "tool_injection"}.get(mode, "unknown")
+    label = {1: "benign", 2: "poisoned_as", 3: "tool_injection", 4: "correlated_injection"}.get(mode, "unknown")
     print(f"\n✅ Using MODE={mode} ({label})\n")
 
     run_cli(mode=mode, thread_id=THREAD_ID, k=K, enable_log=ENABLE_LOG)
