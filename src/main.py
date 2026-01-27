@@ -1,6 +1,6 @@
 from langgraph.graph import MessagesState, START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
-
+from langgraph.errors import GraphRecursionError
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from config import LLM
 from graph_nodes import call_model, call_tool, should_call_tools, retrieve_context
@@ -34,6 +34,8 @@ def smooth_print(text: str, delay: float = 0.015):
     print()  # newline
 
 def build_app(chroma_db, k: int = 5):
+    # Ensure the pick mode menu will be effective
+    from tools import TOOLS, TOOLS_BY_NAME
     # LLM with tools
     llm_with_tools = LLM.bind_tools(TOOLS)
 
@@ -75,6 +77,8 @@ def build_app(chroma_db, k: int = 5):
     return graph.compile(checkpointer=checkpointer)
 
 
+from langgraph.errors import GraphRecursionError
+
 def run_cli(mode: int = 2, thread_id: str = "agent_1", k: int = 5, enable_log: bool = False):
     chroma_db = setup_rag(mode)
     app = build_app(chroma_db, k=k)
@@ -91,38 +95,67 @@ def run_cli(mode: int = 2, thread_id: str = "agent_1", k: int = 5, enable_log: b
             smooth_print("Goodbye, my friend. Take care and see you next time.")
             break
 
-        events = app.stream(
-            {"messages": [HumanMessage(content=user)]},
-            config={"configurable": {"thread_id": thread_id}},
-        )
-
         trace_steps = []
         final_answer = ""
+        hit_recursion = False
+        err_msg = None
 
-        for ev in events:
+        try:
+            events = app.stream(
+                {"messages": [HumanMessage(content=user)]},
+                config={
+                    "configurable": {"thread_id": thread_id},
+                    "recursion_limit": 25,   # bạn có thể tăng lên 25/50 nếu muốn
+                },
+            )
+
+            for ev in events:
+                if enable_log:
+                    log_raw_event(ev)
+
+                node_name, payload = extract_event(ev)
+                msg = payload["messages"][-1]
+
+                # trace: tool name nếu là ToolMessage, còn lại là node_name
+                if isinstance(msg, ToolMessage):
+                    trace_steps.append(f"TOOL:{msg.name}")
+                else:
+                    trace_steps.append(node_name)
+
+                if isinstance(msg, AIMessage):
+                    final_answer = msg.content or final_answer
+
+        except GraphRecursionError as e:
+            hit_recursion = True
+            err_msg = str(e)
             if enable_log:
-                log_raw_event(ev)
+                log_raw_event(f"[GraphRecursionError] {err_msg}\ntrace(partial): {trace_steps}\n---\n")
 
-            node_name, payload = extract_event(ev)
-            msg = payload["messages"][-1]
-
-            # trace: tool name nếu là ToolMessage, còn lại là node_name
-            if isinstance(msg, ToolMessage):
-                trace_steps.append(f"TOOL:{msg.name}")
-            else:
-                trace_steps.append(node_name)
-
-            if isinstance(msg, AIMessage):
-                final_answer = msg.content or final_answer
+        except Exception as e:
+            err_msg = f"{type(e).__name__}: {e}"
+            if enable_log:
+                log_raw_event(f"[Exception] {err_msg}\ntrace(partial): {trace_steps}\n---\n")
 
         if enable_log:
             log_raw_event(f"\ntrace: {trace_steps}\n---\n")
 
         print("\n[ANSWER]")
-        smooth_print(final_answer, delay=0.02)
+        if hit_recursion:
+            # Tránh “im lặng”: thông báo ngắn gọn cho CLI user biết case bị loop
+            smooth_print("⚠️ Stopped due to recursion limit (agent kept looping).", delay=0.01)
+        elif err_msg and not final_answer:
+            smooth_print(f"⚠️ Error: {err_msg}", delay=0.01)
+        else:
+            smooth_print(final_answer, delay=0.01)
+
         print("\n[TRACE]")
-        print(" -> ".join(trace_steps))
+        print(" -> ".join(trace_steps) if trace_steps else "(no trace)")
+        if hit_recursion:
+            print("[NOTE] Recursion limit reached; trace above may be partial.")
+        if err_msg and not hit_recursion:
+            print(f"[NOTE] {err_msg}")
         print("")
+
 
 def _set_env_var_in_file(env_path: str, key: str, value: str) -> None:
     """
@@ -179,9 +212,6 @@ if __name__ == "__main__":
     ENABLE_LOG = True
 
     mode = pick_mode_menu()
-
-    # Ensure the pick mode menu will be effective
-    from tools import TOOLS, TOOLS_BY_NAME
 
     label = {1: "benign", 2: "poisoned_as", 3: "tool_injection"}.get(mode, "unknown")
     print(f"\n✅ Using MODE={mode} ({label})\n")

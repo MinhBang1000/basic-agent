@@ -2,11 +2,13 @@ import os
 import json
 from typing import List, Dict, Any
 
+from src.utils import load_dataset
+
 # Assume you already have:
 # - detect_prompt_injection(text: str, threshold: float=0.5) -> Dict[str, Any]
 # from your Sentinel + ProtectAI code.
 
-DATASET_PATH = "datasets/injecagent_retrieval_only_dataset_textonly.json"
+DATASET_PATH = "datasets/generated_tool_injection_dataset.jsonl"
 
 # Disable torch.compile / inductor để tránh lỗi với ModernBERT
 os.environ["TORCHDYNAMO_DISABLE"] = "1"
@@ -139,15 +141,12 @@ def detect_prompt_injection(text: str, threshold: float = 0.5) -> Dict[str, Any]
     }
 
 
-
-
 def load_tool_outputs(dataset_path: str) -> List[str]:
     """
     Load your generated dataset JSON and extract tool_output as a list of plain text strings.
     Expected JSON format: a list of objects with key "tool_output".
     """
-    with open(dataset_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = load_dataset(path=dataset_path)
 
     if not isinstance(data, list):
         raise ValueError("Dataset JSON must be a list of testcases.")

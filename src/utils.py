@@ -1,5 +1,6 @@
 from typing import Any, Tuple
 from dotenv import load_dotenv
+import json
 import os
 
 def extract_event(event: dict[str, Any]) -> Tuple[str, Any]:
@@ -69,4 +70,13 @@ def get_mode_from_env(env_path: str = ".env") -> int:
         raise RuntimeError(f"Invalid MODE={mode}. Expected 1, 2, or 3.")
 
     return mode
+
+def load_dataset(path):
+    with open(path, "r", encoding="utf-8") as f:
+        first = f.read(1)
+        f.seek(0)
+        if first == "[":
+            return json.load(f)        # JSON array
+        else:
+            return [json.loads(line) for line in f if line.strip()]
 
