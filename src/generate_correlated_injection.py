@@ -15,7 +15,7 @@ from rag import setup_rag  # mode=1 loads benign DB
 # CONFIG
 # =========================
 SEED = 42
-N_SAMPLE = 25  # mode 4 correlated injection (small is ok)
+N_SAMPLE = 100  # mode 4 correlated injection (small is ok)
 
 # Retrieval from BENIGN DB (to get context for correct answer)
 TOPK_RETRIEVE_FROM_BENIGN = 6
@@ -250,7 +250,7 @@ def main():
             print(f"    done {i}/{len(sample_queries)}")
 
     # Merge and write correlated corpus (benign + N poison docs)
-    write_jsonl(OUT_CORPUS, poison_docs)
+    write_jsonl(OUT_CORPUS, benign_corpus + poison_docs)
     print(f"[✓] Wrote correlated corpus: {OUT_CORPUS} (+{len(poison_docs)} docs)")
 
     print("\nNext step:")
