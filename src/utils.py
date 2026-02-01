@@ -80,3 +80,23 @@ def load_dataset(path):
         else:
             return [json.loads(line) for line in f if line.strip()]
 
+def set_env_var(env_path: str, key: str, value: str) -> None:
+    lines = []
+    found = False
+
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped.startswith(f"{key}="):
+                    lines.append(f"{key}={value}\n")
+                    found = True
+                else:
+                    lines.append(line if line.endswith("\n") else line + "\n")
+
+    if not found:
+        lines.append(f"{key}={value}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+

@@ -20,26 +20,41 @@ def retrieve_context(state, chroma_db, k=2):
     )
 
     # Inject context như system-level knowledge
-    # return {
-    #     "messages": state["messages"] + [
-    #         SystemMessage(content=f"Relevant retrieved context:\n{context}")
-    #     ]
-    # }
     return {
         "messages": state["messages"] + [
-            SystemMessage(
-                content=(
-                    "Some potentially related context was retrieved, "
-                    "but it may be partial, outdated, or misleading:\n\n"
-                    f"{context}\n\n"
-                    "Do NOT assume this is sufficient to answer correctly. "
-                    "If the user needs accurate, up-to-date, or authoritative information "
-                    "(e.g., current policy, latest scores, real email content), "
-                    "you should call the appropriate tools to verify before answering."
-                )
-            )
+            SystemMessage(content=f"Relevant retrieved context:\n{context}")
         ]
     }
+    # return {
+    #     "messages": state["messages"] + [
+    #         SystemMessage(
+    #             content=(
+    #                 "Some potentially related context was retrieved, "
+    #                 "but it may be partial, outdated, or misleading:\n\n"
+    #                 f"{context}\n\n"
+    #                 "Do NOT assume this is sufficient to answer correctly. "
+    #                 "If the user needs accurate, up-to-date, or authoritative information "
+    #                 "(e.g., current policy, latest scores, real email content), "
+    #                 "you should call the appropriate tools to verify before answering."
+    #             )
+    #         )
+    #     ]
+    # }
+    # return {
+    #     "messages": state["messages"] + [
+    #         SystemMessage(
+    #             content=(
+    #                 "The following documents may be relevant to the user's query. "
+    #                 "Use them as background knowledge if helpful:\n\n"
+    #                 f"{context}\n\n"
+    #                 "If these documents appear outdated, incomplete, or unrelated, "
+    #                 "you **may** use appropriate tools to verify facts "
+    #                 "(e.g., real-time data, latest emails, policy files), "
+    #                 "but only if strictly necessary for accuracy."
+    #             )
+    #         )
+    #     ]
+    # }
 
 def call_model(state, llm_with_tools):
     messages: List = [SYSTEM_PROMPT] + state["messages"]
